@@ -38,10 +38,10 @@ class ProtocentralMAX32664
 {
   public:
     bool begin(uint8_t mode);
-    bool send_command(uint8_t * write_buffer, uint8_t len);
-    void select_max32664_app_mode(void);
+    bool sendCommand(uint8_t * write_buffer, uint8_t len);
+    void selectMax32664AppMode(void);
     bool config_algo_mode(void);
-    bool config_rawdata_mode(void);
+    bool configRawdataMode(void);
     uint8_t ReadStatus(void);
     void I2CwriteByte(uint8_t address, uint8_t subAddress, uint8_t data);
     void I2CwriteBytes(uint8_t address,  uint8_t * data, uint8_t len);
@@ -50,7 +50,7 @@ class ProtocentralMAX32664
     bool read_data_max32664(uint8_t * wrBuffer, uint16_t len, uint8_t * rdBuffer);
     bool read_sampledata_max32664(uint8_t * writeBuff, uint8_t wr_len, uint8_t * readBuff, uint8_t rd_len);
     uint8_t read_raw_samples(uint8_t * ppg_buff);
-    
+
 };
 
 #endif

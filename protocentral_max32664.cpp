@@ -8,7 +8,7 @@ bool ProtocentralMAX32664::begin(uint8_t mode)
     pinMode(MAX32664_RESET, OUTPUT);
     pinMode(MAX32664_MFIO, OUTPUT);
 
-    select_max32664_app_mode();
+    selectMax32664AppMode();
 
     switch (mode) {
       case ALGOMODE:
@@ -18,7 +18,7 @@ bool ProtocentralMAX32664::begin(uint8_t mode)
 
       case RAWDATAMODE:
               //configure the sensor in raw data mode
-              ret = config_rawdata_mode();
+              ret = configRawdataMode();
         break;
 
       default :
@@ -71,7 +71,7 @@ bool ProtocentralMAX32664::read_data_max32664(uint8_t * wrBuffer, uint16_t len, 
 uint8_t ProtocentralMAX32664::read_raw_samples(uint8_t * ppg_buff){
 
     uint8_t wr_data[2] = {0, 0};
-    if((send_command(wr_data, 2))!= true){
+    if((sendCommand(wr_data, 2))!= true){
         return false;
     }
 
@@ -113,12 +113,12 @@ uint8_t ProtocentralMAX32664::read_raw_samples(uint8_t * ppg_buff){
     return (no_samples*2);
 }
 
-bool ProtocentralMAX32664::config_rawdata_mode(){
+bool ProtocentralMAX32664::configRawdataMode(){
 
     bool ret_flag = true;
 
     uint8_t wr[5]={0x10, 0x00, 0x01};
-    bool ret = send_command(wr, 3);
+    bool ret = sendCommand(wr, 3);
     ret_flag &= ret;
     delay(10);
 
@@ -126,7 +126,7 @@ bool ProtocentralMAX32664::config_rawdata_mode(){
     wr[1]= 0x01;
     wr[2]= 0x0f;
 
-    ret = send_command(wr, 3);
+    ret = sendCommand(wr, 3);
     delay(10);
     ret_flag &= ret;
 
@@ -134,7 +134,7 @@ bool ProtocentralMAX32664::config_rawdata_mode(){
     wr[1]= 0x03;
     wr[2]= 0x01;
 
-    ret = send_command(wr, 3);
+    ret = sendCommand(wr, 3);
     delay(10);
     ret_flag &= ret;
 
@@ -142,7 +142,7 @@ bool ProtocentralMAX32664::config_rawdata_mode(){
     wr[1]= 0x04;
     wr[2]= 0x02;
 
-    ret = send_command(wr, 3);
+    ret = sendCommand(wr, 3);
     delay(10);
     ret_flag &= ret;
 
@@ -150,7 +150,7 @@ bool ProtocentralMAX32664::config_rawdata_mode(){
     wr[1]= 0x00;
     wr[2]= 0x00;
 
-    ret = send_command(wr, 3);
+    ret = sendCommand(wr, 3);
     delay(200);
     ret_flag &= ret;
 
@@ -159,7 +159,7 @@ bool ProtocentralMAX32664::config_rawdata_mode(){
     wr[2]= 0x0c;
     wr[3]= 0x7f;
 
-    ret = send_command(wr, 4);
+    ret = sendCommand(wr, 4);
     delay(10);
     ret_flag &= ret;
 
@@ -168,14 +168,14 @@ bool ProtocentralMAX32664::config_rawdata_mode(){
     wr[2]= 0x0d;
     wr[3]= 0x7f;
 
-    ret = send_command(wr, 4);
+    ret = sendCommand(wr, 4);
     delay(10);
     ret_flag &= ret;
 
     return ret;
 }
 
-void ProtocentralMAX32664::select_max32664_app_mode(){
+void ProtocentralMAX32664::selectMax32664AppMode(){
 
   digitalWrite(MAX32664_RESET, 0);
   delay(10);
@@ -186,13 +186,13 @@ void ProtocentralMAX32664::select_max32664_app_mode(){
 
   //debug
   uint8_t wr_buff[4]={0x01, 0x00, 0x00};
-  send_command(wr_buff, 3);
+  sendCommand(wr_buff, 3);
 
   //uint8_t wr_buf[4]={READ_DEVICE_MODE, 0x00, 0,0};
-//  send_command(wr_buf, 2);
+//  sendCommand(wr_buf, 2);
 }
 
-bool ProtocentralMAX32664::send_command(uint8_t * write_buffer, uint8_t len){
+bool ProtocentralMAX32664::sendCommand(uint8_t * write_buffer, uint8_t len){
 
     uint8_t read_buff[2] = {0xff};
 
