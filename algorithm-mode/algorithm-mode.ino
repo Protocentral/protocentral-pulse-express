@@ -33,27 +33,27 @@ void setup(){
       delay(5000);
     }    
   }
-/*
+
   bool ret = MAX32664.startBPTcalibration();
   while(!ret){      
       
       delay(10000);
-      Serial.println("failed calib, trying again");
-      ret = MAX32664.startBPTcalibration();
-  }*/
+      Serial.println("failed calib, please retsart");
+     // ret = MAX32664.startBPTcalibration();
+  }
 
   //Serial.println("start in estimation mode");
-bool  ret = MAX32664.configAlgoInEstimationMode();
+  ret = MAX32664.configAlgoInEstimationMode();
   while(!ret){      
       
       //Serial.println("failed est mode");
       ret = MAX32664.configAlgoInEstimationMode();
       delay(3000);
   }
-
+  
   //MAX32664.enableInterruptPin();
   //Serial.println("Getting the device ready..");
-  delay(2000); 
+  delay(10000); 
   
 }
 
@@ -64,8 +64,8 @@ void loop(){
 
   //debug mode, Todo: implement proper read sequence.
   uint8_t num_samples = MAX32664.readSamples(readBuff);
-  ///Serial.print("num samples ");
-  //Serial.println(num_samples);
+  Serial.print("num samples ");
+  Serial.println(num_samples);
   delay(100);
 
 }
@@ -176,9 +176,10 @@ uint8_t max32664::readCalibSamples(uint8_t  * dataBuff){
   for (size_t i = 0; i < num_samples; i++) {
      
     readMultipleBytes(0x12, 0x01, readBuff, readLen);
-    delay(1);
+    delay(10);
   }
 
+  delay(10);
   Serial.print("progress =  %");
   Serial.println(readBuff[13]);
   
@@ -288,7 +289,7 @@ bool max32664::loadBPTcalibrationVector(){
   calibVector[2] = 0x03;
 
   bool ret;
-  uint8_t maxWrSize = 32;
+  uint8_t maxWrSize = 30;
   uint8_t wrLoopCnt = (827/maxWrSize);
   uint8_t wrOffset = (827%maxWrSize);
   int i = 0;
@@ -305,7 +306,7 @@ bool max32664::loadBPTcalibrationVector(){
       delayMicroseconds(1);
     }
         
-    Wire.endTransmission(false);
+    Wire.endTransmission(true);
     delay(6);   //
   }
 
@@ -353,14 +354,17 @@ bool  max32664::loadDiastolicCalibrationValues(){
 bool max32664::configAlgoInEstimationMode(){
 
   //enterAppMode();
-
+//while(1){
   //load BPT calibration vector
   loadBPTcalibrationVector();
-
+  delay(1000);
+//}
   //set date, time
   setDateTime();
+  delay(30);
 
   loadSpo2Coefficients();
+  delay(30);
 
   //enable algorithm in ppg and algo mode
   writeByte(0x10, 0x00, 0x03);
@@ -386,40 +390,37 @@ bool max32664::configAlgoInEstimationMode(){
 bool max32664::startBPTcalibration(){
 
  // Serial.println("configuring calibration mode");
-  //enterAppMode();
-  //
-    uint8_t ret = writeByte(0x01, 0x00, 0x00);
-  delay(10);
-  if(!ret){
-    Serial.println("failed to set raw data mode !!!");
-    return false;
-  }else{
-    
-  }
+  enterAppMode();
   
   //set date, time
   bool cmdStatus = setDateTime();
   if(!cmdStatus){
     Serial.println("failed setdate cmd");
   }
-
+  delay(30);
+  
   cmdStatus =loadSysCalibrationValues();
   if(!cmdStatus){
     Serial.println("failed loadSysCalibrationValues");
     return false;
   }
-
+  delay(30);
+  
   cmdStatus =loadDiastolicCalibrationValues();
   if(!cmdStatus){
     Serial.println("failed loadDiastolicCalibrationValues");
     return false;
   }
+  delay(30);
+  
   //enable algorithm in ppg and algo mode
   cmdStatus =writeByte(0x10, 0x00, 0x03);
   if(!cmdStatus){
     Serial.println("failed to enable algorithm");
     return false;
   }
+  delay(30);
+  
   
 //set intr th
   cmdStatus =writeByte(0x10, 0x01, 0x0f);
@@ -427,12 +428,16 @@ bool max32664::startBPTcalibration(){
    // Serial.println("failed to enable algorithm");
     return false;
   }
+  delay(30);
+  
   //enable afe
   cmdStatus =writeByte(0x44, 0x03, 0x01);
   if(!cmdStatus){
    // Serial.println("failed to enable algorithm");
     return false;
   }
+  delay(30);
+  
   //enable BPT algo in calibration mode
   cmdStatus =writeByte(0x52, 0x04, 0x01);
   if(!cmdStatus){
@@ -445,6 +450,8 @@ bool max32664::startBPTcalibration(){
   
   uint8_t calibSamplBuff[30];
   uint8_t bpStatus = readCalibSamples(calibSamplBuff);
+  
+#if 1   //debug
   while(bpStatus != 2 && (max32664Output.progress != 100) ){ //0x02 == success
 
     bpStatus = readCalibSamples(calibSamplBuff);
@@ -456,10 +463,11 @@ bool max32664::startBPTcalibration(){
       break;
     }
   }
+#endif
 
   //Serial.println("completed calibration");
   if (cmdStatus ){
-    readCalibrationVector();
+    //readCalibrationVector();
     delay(1000);
   }
   

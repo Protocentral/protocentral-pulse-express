@@ -52,7 +52,7 @@ void loop(){
   
   uint8_t no_samples = read_raw_samples(&ppgBuff[buff_counter]);
   ///Serial.print("num samples ");
-  //Serial.println(no_samples);
+  Serial.println(no_samples);
 
     
   for(int i=0; i<no_samples; i++){
