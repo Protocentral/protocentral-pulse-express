@@ -33,17 +33,17 @@ void setup(){
       delay(5000);
     }    
   }
-
+/*
   bool ret = MAX32664.startBPTcalibration();
   while(!ret){      
       
       delay(10000);
       Serial.println("failed calib, trying again");
       ret = MAX32664.startBPTcalibration();
-  }
+  }*/
 
   //Serial.println("start in estimation mode");
-  ret = MAX32664.configAlgoInEstimationMode();
+bool  ret = MAX32664.configAlgoInEstimationMode();
   while(!ret){      
       
       //Serial.println("failed est mode");
@@ -51,7 +51,7 @@ void setup(){
       delay(3000);
   }
 
-  MAX32664.enableInterruptPin();
+  //MAX32664.enableInterruptPin();
   //Serial.println("Getting the device ready..");
   delay(2000); 
   
@@ -85,7 +85,7 @@ uint8_t max32664::readSamples(uint8_t  * dataBuff){
   //Read number of samples available in the fifo. function returns 0 if command fails or no new samples available
   uint8_t num_samples = readNumSamples();
   if(num_samples == 0){
-    //Serial.println("No samples available");
+    Serial.println("No samples available");
     return 0;
   }else{
     //Serial.print("num samples ");
@@ -287,7 +287,31 @@ bool max32664::loadBPTcalibrationVector(){
   calibVector[1] = 0x04;
   calibVector[2] = 0x03;
 
-  bool ret = writeMultipleBytes(calibVector, 827);
+  bool ret;
+  uint8_t maxWrSize = 32;
+  uint8_t wrLoopCnt = (827/maxWrSize);
+  uint8_t wrOffset = (827%maxWrSize);
+  int i = 0;
+  Serial.print("wr cnt off  ");
+  Serial.println(wrLoopCnt);
+  Serial.println(wrOffset);
+  
+  for( i=0; i<maxWrSize; i++){
+     Wire.beginTransmission(hubAddress);
+
+    for(int j=0; j<maxWrSize; j++){
+      
+      Wire.write(calibVector[(i*maxWrSize) + j]);
+      delayMicroseconds(1);
+    }
+        
+    Wire.endTransmission(false);
+    delay(6);   //
+  }
+
+  ret = writeMultipleBytes(&calibVector[(i*maxWrSize)], wrOffset);
+  delay(2);
+  
   return ret;
 }
 
@@ -521,7 +545,7 @@ bool max32664::readAlgoVersion(){
 
   Wire.beginTransmission(hubAddress);
   Wire.write(0xff);    
-  Wire.write(0x07);    
+  Wire.write(0x03);    
   Wire.endTransmission();
  // delay(DELAY_CMD);
   
