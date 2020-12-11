@@ -102,6 +102,7 @@ uint8_t max32664::readSamples(uint8_t  * dataBuff){
     Serial.println("No samples available");
     return 0;
   }else{
+//    if(num_samples > MAX_SAMPL_RDSIZE) num_samples = MAX_SAMPL_RDSIZE;
     //Serial.print("num samples ");
    // Serial.println(num_samples);
   }
@@ -119,7 +120,7 @@ uint8_t max32664::readSamples(uint8_t  * dataBuff){
     unsigned long unsignedPpg = (unsigned long ) (ppg2 | ppg1 | ppg0);
     int16_t ppgFinal = (int16_t) (unsignedPpg)/10;
    
-    dataBuff[i] = ppgFinal;
+    //dataBuff[i] = ppgFinal;
   }
 
   max32664Output.sys = readBuff[16];
