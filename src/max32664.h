@@ -4,6 +4,10 @@
 #define DELAY_CMD                 45  // Milliseconds
 #define CMD_SUCCESS               0x00
 #define READ_DEVICE_MODE          0x02
+#define RESET_PIN  4
+#define MFIO_PIN 5
+#define SENSORHUB_ADDR  0x55
+#define CALIBVECTOR_SIZE  827
 
 typedef struct{
 
@@ -22,8 +26,8 @@ typedef struct{
 class max32664
 {
   public:
-    uint8_t readSamples(uint8_t * dataBuff);
-    uint8_t readCalibSamples(uint8_t * dataBuff);
+    uint8_t readSamples( );
+    uint8_t readCalibSamples();
     bool configAlgoInEstimationMode();
     uint8_t hubBegin();
     bool startBPTcalibration();
@@ -33,7 +37,7 @@ class max32664
 
   private:
 
-    uint8_t calibVector[827] = {0x50, 0x04, 0x03, 0, 0, 175, 63, 3, 33, 75, 0, 0, 0, 0, 15, 198, 2, 100, 3, 32, 0, 0, 3, 207, 0,      //calib vector generated with pulse-nrf
+    uint8_t calibVector[827] = {0x50, 0x04, 0x03, 0, 0, 175, 63, 3, 33, 75, 0, 0, 0, 0, 15, 198, 2, 100, 3, 32, 0, 0, 3, 207, 0,      //calib vector sample
                                 4, 0, 3, 175, 170, 3, 33, 134, 0, 0, 0, 0, 15, 199, 2, 100, 3, 32, 0, 0, 3,
                                 207, 0, 4, 0, 3, 176, 22, 3, 33, 165, 0, 0, 0, 0, 15, 200, 2, 100, 3, 32, 0,
                                 0, 3, 207, 0, 4, 0, 3, 176, 102, 3, 33, 203, 0, 0, 0, 0, 15, 201, 2, 100, 3,
@@ -88,9 +92,7 @@ class max32664
     void readCalibrationVector();
     uint16_t formHRdata(uint8_t * hrBuff);
     float formSpo2data(uint8_t * spo2Buff);
-    bool readAlgoVersion();
-
-
+    bool readSensorHubVersion();
 };
   
 
