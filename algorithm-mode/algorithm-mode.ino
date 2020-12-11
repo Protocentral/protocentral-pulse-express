@@ -42,17 +42,18 @@ void setup(){
      // ret = MAX32664.startBPTcalibration();
   }
 
+  delay(1000);
   //Serial.println("start in estimation mode");
   ret = MAX32664.configAlgoInEstimationMode();
   while(!ret){      
       
       //Serial.println("failed est mode");
       ret = MAX32664.configAlgoInEstimationMode();
-      delay(3000);
+      delay(10000);
   }
   
   //MAX32664.enableInterruptPin();
-  //Serial.println("Getting the device ready..");
+  Serial.println("Getting the device ready..");
   delay(10000); 
   
 }
@@ -64,10 +65,23 @@ void loop(){
 
   //debug mode, Todo: implement proper read sequence.
   uint8_t num_samples = MAX32664.readSamples(readBuff);
-  Serial.print("num samples ");
-  Serial.println(num_samples);
-  delay(100);
+  //Serial.print("num samples ");
+  //Serial.println(num_samples);
 
+  if(num_samples){
+    
+    Serial.print("sys = ");
+    Serial.print(max32664Output.sys);
+    Serial.print(", dia = ");
+    Serial.print(max32664Output.dia);
+    Serial.print(", hr = ");
+    Serial.print(max32664Output.hr);  
+    Serial.print(" spo2 = ");
+    Serial.println(max32664Output.spo2);
+    
+  }else Serial.print(" NO samples availbale ");
+  
+  delay(100);
 }
 
 
@@ -112,18 +126,7 @@ uint8_t max32664::readSamples(uint8_t  * dataBuff){
   max32664Output.dia = readBuff[17];
   max32664Output.hr = formHRdata(&readBuff[14]);
   max32664Output.spo2 = formSpo2data(&readBuff[18]);
-
-  Serial.print("sys = ");
-  Serial.print(max32664Output.sys);
-  Serial.print(", dia = ");
-  Serial.print(max32664Output.dia);
-  Serial.print(", hr = ");
-  Serial.print(max32664Output.hr);  
-  Serial.print("spo2 = ");
-  Serial.println(max32664Output.spo2);
     
-
-  
   return (num_samples);
 }
 
@@ -180,7 +183,7 @@ uint8_t max32664::readCalibSamples(uint8_t  * dataBuff){
   }
 
   delay(10);
-  Serial.print("progress =  %");
+  Serial.print("progress(%) = ");
   Serial.println(readBuff[13]);
   
   return readBuff[12];
@@ -395,20 +398,20 @@ bool max32664::startBPTcalibration(){
   //set date, time
   bool cmdStatus = setDateTime();
   if(!cmdStatus){
-    Serial.println("failed setdate cmd");
+    //Serial.println("failed setdate cmd");
   }
   delay(30);
   
   cmdStatus =loadSysCalibrationValues();
   if(!cmdStatus){
-    Serial.println("failed loadSysCalibrationValues");
+    //Serial.println("failed loadSysCalibrationValues");
     return false;
   }
   delay(30);
   
   cmdStatus =loadDiastolicCalibrationValues();
   if(!cmdStatus){
-    Serial.println("failed loadDiastolicCalibrationValues");
+   // Serial.println("failed loadDiastolicCalibrationValues");
     return false;
   }
   delay(30);
@@ -416,7 +419,7 @@ bool max32664::startBPTcalibration(){
   //enable algorithm in ppg and algo mode
   cmdStatus =writeByte(0x10, 0x00, 0x03);
   if(!cmdStatus){
-    Serial.println("failed to enable algorithm");
+    //Serial.println("failed to enable algorithm");
     return false;
   }
   delay(30);
@@ -444,7 +447,8 @@ bool max32664::startBPTcalibration(){
     //Serial.println("failed to enable BPT algo");
     return false;
   }
-  //Serial.println("Please keep the finger on sensor untill calibration completes");
+  
+  //Serial.println("Please keep your finger on sensor untill calibration reaches 100%");
   delay(120);
 
   
@@ -458,7 +462,7 @@ bool max32664::startBPTcalibration(){
     delay(1000);
 
     if(bpStatus == 05){    //void print_calib_vector(void)05 == failure
-      Serial.println("calibration failed");
+     // Serial.println("calibration failed");
       cmdStatus = false;
       break;
     }
@@ -470,7 +474,7 @@ bool max32664::startBPTcalibration(){
     //readCalibrationVector();
     delay(1000);
   }
-  
+  delay(5000);
   return true;
 }
 
@@ -481,7 +485,7 @@ void  max32664::readCalibrationVector(){
   uint8_t ret = writeByte(0x44, 0x03, 0x00);
   delay(10);
   if(!ret){
-    Serial.println("disable afe failed");
+   // Serial.println("disable afe failed");
     return false;
   }
   
@@ -489,7 +493,7 @@ void  max32664::readCalibrationVector(){
   ret = writeByte(0x52, 0x04, 0x00);
   delay(10);
   if(!ret){
-    Serial.println("failed to set raw data mode !!!");
+   // Serial.println("failed to set raw data mode !!!");
     return false;
   }
 /*  
@@ -507,7 +511,7 @@ void  max32664::readCalibrationVector(){
   
   readMultipleBytes(0x02, 0x00, &calibVector[3], 824);
 
-  for(int i =0; i<800; i++){
+  for(int i =0; i<827; i++){
     Serial.println(calibVector[i]);
     delayMicroseconds(10);
   }
