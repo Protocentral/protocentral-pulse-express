@@ -229,8 +229,8 @@ uint8_t max32664::readNumSamples()
   uint8_t statusByte;
 
   Wire.beginTransmission(SENSORHUB_ADDR);
-  Wire.write(0x12);    
-  Wire.write(0x00);    
+  Wire.write( (uint8_t) 0x12);    
+  Wire.write((uint8_t) 0x00);    
   Wire.endTransmission();
   
   Wire.requestFrom(SENSORHUB_ADDR, 2);
@@ -581,7 +581,7 @@ void  max32664::readCalibrationVector(){
   delay(10);
   if(!ret){
    // Serial.println("disable afe failed");
-    return false;
+    return;
   }
   
   //Disable BPT algorithm
@@ -589,7 +589,7 @@ void  max32664::readCalibrationVector(){
   delay(10);
   if(!ret){
    // Serial.println("failed to set raw data mode !!!");
-    return false;
+    return;
   }
   
 /*  
