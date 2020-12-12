@@ -23,13 +23,54 @@
 //    WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 //    SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 //
-//    For information on how to use, visit https://github.com/Protocentral/protocentral-max30003-arduino
-//
 /////////////////////////////////////////////////////////////////////////////////////////
 
 
 #include <Wire.h>
 #include "max32664.h"
+#include "Arduino.h"
+
+    uint8_t calibVector[CALIBVECTOR_SIZE] = {0x50, 0x04, 0x03, 0, 0, 175, 63, 3, 33, 75, 0, 0, 0, 0, 15, 198, 2, 100, 3, 32, 0, 0, 3, 207, 0,      //calib vector sample
+                                4, 0, 3, 175, 170, 3, 33, 134, 0, 0, 0, 0, 15, 199, 2, 100, 3, 32, 0, 0, 3,
+                                207, 0, 4, 0, 3, 176, 22, 3, 33, 165, 0, 0, 0, 0, 15, 200, 2, 100, 3, 32, 0,
+                                0, 3, 207, 0, 4, 0, 3, 176, 102, 3, 33, 203, 0, 0, 0, 0, 15, 201, 2, 100, 3,
+                                32, 0, 0, 3, 207, 0, 4, 0, 3, 176, 178, 3, 33, 236, 0, 0, 0, 0, 15, 202, 2,
+                                100, 3, 32, 0, 0, 3, 207, 0, 4, 0, 3, 176, 255, 3, 34, 16, 0, 0, 0, 0, 15,
+                                203, 2, 100, 3, 32, 0, 0, 3, 207, 0, 4, 0, 3, 177, 64, 3, 34, 41, 0, 0, 0, 0,
+                                15, 204, 2, 100, 3, 32, 0, 0, 3, 207, 0, 4, 0, 3, 177, 130, 3, 34, 76, 0, 0,
+                                0, 0, 15, 205, 2, 100, 3, 32, 0, 0, 3, 207, 0, 4, 0, 3, 177, 189, 3, 34, 90,
+                                0, 0, 0, 0, 15, 206, 2, 100, 3, 32, 0, 0, 3, 207, 0, 4, 0, 3, 177, 248, 3, 34,
+                                120, 0, 0, 0, 0, 15, 207, 2, 100, 3, 32, 0, 0, 3, 207, 0, 4, 0, 3, 178, 69, 3,
+                                34, 137, 0, 0, 0, 0, 15, 208, 2, 100, 3, 32, 0, 0, 3, 0, 0, 175, 63, 3, 33,
+                                75, 0, 0, 0, 0, 15, 198, 2, 100, 3, 32, 0, 0, 3, 207, 0, 4, 0, 3, 175, 170, 3,
+                                33, 134, 0, 0, 0, 0, 15, 199, 2, 100, 3, 32, 0, 0, 3, 207, 0, 4, 0, 3, 176,
+                                22, 3, 33, 165, 0, 0, 0, 0, 15, 200, 2, 100, 3, 32, 0, 0, 3, 207, 0, 4, 0, 3,
+                                176, 102, 3, 33, 203, 0, 0, 0, 0, 15, 201, 2, 100, 3, 32, 0, 0, 3, 207, 0, 4,
+                                0, 3, 176, 178, 3, 33, 236, 0, 0, 0, 0, 15, 202, 2, 100, 3, 32, 0, 0, 3, 207,
+                                0, 4, 0, 3, 176, 255, 3, 34, 16, 0, 0, 0, 0, 15, 203, 2, 100, 3, 32, 0, 0, 3,
+                                207, 0, 4, 0, 3, 177, 64, 3, 34, 41, 0, 0, 0, 0, 15, 204, 2, 100, 3, 32, 0, 0,
+                                3, 207, 0, 4, 0, 3, 177, 130, 3, 34, 76, 0, 0, 0, 0, 15, 205, 2, 100, 3, 32,
+                                0, 0, 3, 207, 0, 4, 0, 3, 177, 189, 3, 34, 90, 0, 0, 0, 0, 15, 206, 2, 100, 3,
+                                32, 0, 0, 3, 207, 0, 4, 0, 3, 177, 248, 3, 34, 120, 0, 0, 0, 0, 15, 207, 2,
+                                100, 3, 32, 0, 0, 3, 207, 0, 4, 0, 3, 178, 69, 3, 34, 137, 0, 0, 0, 0, 15,
+                                208, 2, 100, 3, 32, 0, 0, 3, 0, 0, 175, 63, 3, 33, 75, 0, 0, 0, 0, 15, 198, 2,
+                                100, 3, 32, 0, 0, 3, 207, 0, 4, 0, 3, 175, 170, 3, 33, 134, 0, 0, 0, 0, 15,
+                                199, 2, 100, 3, 32, 0, 0, 3, 207, 0, 4, 0, 3, 176, 22, 3, 33, 165, 0, 0, 0, 0,
+                                15, 200, 2, 100, 3, 32, 0, 0, 3, 207, 0, 4, 0, 3, 176, 102, 3, 33, 203, 0, 0,
+                                0, 0, 15, 201, 2, 100, 3, 32, 0, 0, 3, 207, 0, 4, 0, 3, 176, 178, 3, 33, 236,
+                                0, 0, 0, 0, 15, 202, 2, 100, 3, 32, 0, 0, 3, 207, 0, 4, 0, 3, 176, 255, 3, 34,
+                                16, 0, 0, 0, 0, 15, 203, 2, 100, 3, 32, 0, 0, 3, 207, 0, 4, 0, 3, 177, 64, 3,
+                                34, 41, 0, 0, 0, 0, 15, 204, 2, 100, 3, 32, 0, 0, 3, 207, 0, 4, 0, 3, 177,
+                                130, 3, 34, 76, 0, 0, 0, 0, 15, 205, 2, 100, 3, 32, 0, 0, 3, 207, 0, 4, 0, 3,
+                                177, 189, 3, 34, 90, 0, 0, 0, 0, 15, 206, 2, 100, 3, 32, 0, 0, 3, 207, 0, 4,
+                                0, 3, 177, 248, 3, 34, 120, 0, 0, 0, 0, 15, 207, 2, 100, 3, 32, 0, 0, 3, 207,
+                                0, 4, 0, 3, 178, 69, 3, 34, 137, 0, 0, 0, 0, 15, 208, 2, 100, 3, 32, 0, 0, 3,
+                                0, 0, 175, 63, 3, 33, 75, 0, 0, 0, 0, 15, 198, 2, 100, 3, 32, 0, 0, 3, 207, 0,
+                                4, 0, 3, 175, 170, 3, 33, 134, 0, 0, 0, 0, 15, 199, 2, 100, 3, 32, 0, 0, 3,
+                                207, 0, 4, 0, 3, 176, 22, 3, 33, 165, 0, 0, 0, 0, 15, 200, 2, 100, 3, 32, 0,
+                                0, 3, 207, 0, 4, 0, 3, 176, 102, 3};
+
+
 uint8_t max32664::readSamples( ){
 
   uint8_t    ret = writeByte(0x00, 0x00);
@@ -42,16 +83,16 @@ uint8_t max32664::readSamples( ){
   uint8_t readLen = 23;
 
   //Read number of samples available in the fifo. function returns 0 if command fails or no new samples available
-  uint8_t num_samples = readNumSamples();
-  if(num_samples == 0){
+  uint8_t numSamples = readNumSamples();
+  if(numSamples == 0){
     //Serial.println("No samples available");
     return 0;
   }else{
     //Serial.print("num samples ");
-   // Serial.println(num_samples);
+   // Serial.println(numSamples);
   }
 
-  for (size_t i = 0; i < num_samples; i++) {
+  for (size_t i = 0; i < numSamples; i++) {
      
     readMultipleBytes(0x12, 0x01, readBuff, readLen);
   }
@@ -61,7 +102,7 @@ uint8_t max32664::readSamples( ){
   max32664Output.hr = formHRdata(&readBuff[14]);
   max32664Output.spo2 = formSpo2data(&readBuff[18]);
     
-  return (num_samples);
+  return (numSamples);
 }
 
 
@@ -93,7 +134,7 @@ uint8_t max32664::readCalibSamples(){
 
   uint8_t    ret = writeByte(0x00, 0x00);
   if(!ret){
-    Serial.println("failed to read status, could not read samples !!!");
+    //Serial.println("failed to read status, could not read samples !!!");
     return 0;
   }
 
@@ -101,16 +142,16 @@ uint8_t max32664::readCalibSamples(){
   uint8_t readBuff[readLen]={0};
 
   //Read number of samples available in the fifo. function returns 0 if command fails or no new samples available
-  uint8_t num_samples = readNumSamples();
-  if(num_samples == 0){
-    Serial.println("No samples available");
+  uint8_t numSamples = readNumSamples();
+  if(numSamples == 0){
+    //Serial.println("No samples available");
     return false;
   }else{
     //Serial.print("num samples ");
-   // Serial.println(num_samples);
+   // Serial.println(numSamples);
   }
 
-  for (size_t i = 0; i < num_samples; i++) {
+  for (size_t i = 0; i < numSamples; i++) {
      
     readMultipleBytes(0x12, 0x01, readBuff, readLen);
     delay(10);
@@ -124,13 +165,57 @@ uint8_t max32664::readCalibSamples(){
 }
 
 
+uint8_t max32664::readRawSamples(int16_t * ppgBuff){
+
+  uint8_t    ret = writeByte(0x00, 0x00);
+  if(!ret){
+    Serial.println("failed to read status, could not read samples !!!");
+    return 0;
+  }
+
+  uint8_t readLen = 13;
+  uint8_t readBuff[20]={0};
+
+  //Read number of samples available in the fifo. function returns 0 if command fails or no new samples available
+  uint8_t numSamples = readNumSamples();
+  if(numSamples == 0){
+    //Serial.println("No samples available");
+    return 0;
+  }else{
+
+    if(numSamples > RAWDATA_BUFFLEN) numSamples = RAWDATA_BUFFLEN;
+    //Serial.print("num samples ");
+   // Serial.println(numSamples);
+  }
+
+  for (size_t i = 0; i < numSamples; i++) {
+     
+    readMultipleBytes(0x12, 0x01, readBuff, readLen);
+
+    unsigned long ppg0 = (unsigned long ) readBuff[0];//readBuff[1];
+    ppg0 = ppg0 << 16;
+    unsigned long ppg1 = (unsigned long ) readBuff[1];
+    ppg1 = ppg1 << 8;
+    unsigned long ppg2 = (unsigned long ) readBuff[2];
+    unsigned long unsignedPpg = (unsigned long ) (ppg2 | ppg1 | ppg0);
+
+    int16_t ppgFinal = (int16_t) (unsignedPpg)/10;
+   
+    static uint8_t count = 0;
+    ppgBuff[i] = ppgFinal;
+  }
+
+  return (numSamples);
+}
+
+
 bool max32664::enterAppMode(){
 
   uint8_t ret = writeByte(0x01, 0x00, 0x00);
   delay(10);
   
   if(!ret){
-    Serial.println("failed to enter app mode !!!");
+    //Serial.println("failed to enter app mode !!!");
     return false;
   }
   
@@ -176,7 +261,7 @@ bool max32664::readMultipleBytes(uint8_t data1, uint8_t data2, uint8_t * readBuf
   
   if( statusByte ){
     
-    Serial.println("fifo sample read cmd failed");
+    //Serial.println("fifo sample read cmd failed");
     return false;
   }else{
 
@@ -253,7 +338,7 @@ bool max32664::loadBPTcalibrationVector(){
 
 bool max32664::setDateTime(){
   
-  uint8_t wrBuffer[20]= {0x50, 0x04, 0x04, 0x5c, 0xc2, 0x02, 0x00, 0xe0, 0x7f, 0x02, 0x00};
+  uint8_t wrBuffer[14]= {0x50, 0x04, 0x04, 0x5c, 0xc2, 0x02, 0x00, 0xe0, 0x7f, 0x02, 0x00};
   bool ret = writeMultipleBytes(wrBuffer, 11);
   return ret;
 }
@@ -261,7 +346,7 @@ bool max32664::setDateTime(){
 
 bool  max32664::loadSpo2Coefficients(){
   
-  uint8_t wrBuffer[20]= {0x50, 0x04, 0x06, 0x00, 0x02, 0x6f, 0x60, 0xff, 0xcb, 0x1d, 0x12, 0x00, 0xab, 0xf3, 0x7b};
+  uint8_t wrBuffer[17]= {0x50, 0x04, 0x06, 0x00, 0x02, 0x6f, 0x60, 0xff, 0xcb, 0x1d, 0x12, 0x00, 0xab, 0xf3, 0x7b};
   bool ret = writeMultipleBytes(wrBuffer, 15);
 
   return ret;
@@ -270,7 +355,7 @@ bool  max32664::loadSpo2Coefficients(){
 
 bool  max32664::loadSysCalibrationValues(){
 
-  uint8_t wrBuffer[20]= {0x50, 0x04, 0x01, 0x78, 0x7a, 0x7d};
+  uint8_t wrBuffer[6]= {0x50, 0x04, 0x01, 0x78, 0x7a, 0x7d};
   bool ret = writeMultipleBytes(wrBuffer, 6);
 
   return ret;
@@ -278,10 +363,81 @@ bool  max32664::loadSysCalibrationValues(){
 
 bool  max32664::loadDiastolicCalibrationValues(){
 
-  uint8_t wrBuffer[20]= {0x50, 0x04, 0x02, 0x50, 0x51, 0x52};
+  uint8_t wrBuffer[6]= {0x50, 0x04, 0x02, 0x50, 0x51, 0x52};
   bool ret = writeMultipleBytes(wrBuffer, 6);
 
   return ret;  
+}
+
+
+bool max32664::configRawdataMode(){
+
+  //enter app mode
+  bool ret = writeByte(0x01, 0x00, 0x00);
+  delay(10);
+  if(!ret){
+    Serial.println("enter app mode cmd failed");
+    return false;
+  }
+
+  //Set output mode to sensor data 
+  ret = writeByte(0x10, 0x00, 0x01);
+  delay(10);
+  if(!ret){
+    Serial.println("Set output mode to sensor data cmd failed");
+    return false;
+  }
+
+  //Set sensor hub interrupt threshold
+  ret = writeByte(0x10, 0x01, 0x0f);
+  delay(10);
+  if(!ret){
+    Serial.println("Set interrupt threshold cmd failed");
+    return false;
+  }
+  
+  //Enable AFE
+  ret = writeByte(0x44, 0x03, 0x01);
+  delay(10);
+  if(!ret){
+    Serial.println("Enable AFE cmd failed");
+    return false;
+  }
+
+  //Enable BPT algorithm in Estimation mode
+  ret = writeByte(0x52, 0x04, 0x02);
+  delay(10);
+  if(!ret){
+    Serial.println("Enable AFE cmd failed");
+    return false;
+  }
+
+  //Disable AGC.
+  ret = writeByte(0x52, 0x00, 0x00);
+  delay(200);
+  if(!ret){
+    Serial.println("Disable AGC cmd failed");
+    return false;
+  }
+
+  //led1
+  ret = writeByte(0x40, 0x03, 0x0c, 0x7f);
+  delay(10);
+  if(!ret){
+     Serial.println("LED1 (red) current set failed");
+    return false;
+  }
+  
+  //led2
+  ret = writeByte(0x40, 0x03, 0x0d, 0x7f);
+  delay(10);
+  if(!ret){
+    Serial.println("LED2 (IR) current set failed");
+    return false;
+  }
+
+  Serial.println("Device configured in rawdata mode");
+  return true;
 }
 
 
@@ -326,7 +482,7 @@ bool max32664::configAlgoInEstimationMode(){
   if(!ret) return false;
   delay(120);
 
-  Serial.println("Device configured in algorithm mode");
+  //Serial.println("Device configured in algorithm mode");
   
   return true;
 }
@@ -389,10 +545,9 @@ bool max32664::startBPTcalibration(){
     return false;
   }
   
-  //Serial.println("Please keep your finger on sensor untill calibration reaches 100%");
+  Serial.println("Please keep your finger on sensor untill progress reach 100%");
   delay(120);
 
-  uint8_t calibSamplBuff[30];
   uint8_t bpStatus = readCalibSamples();
 
   while(bpStatus != 2 && (max32664Output.progress != 100) ){ //bpStatus, 0x02 == success
@@ -409,13 +564,13 @@ bool max32664::startBPTcalibration(){
   }
 
   //Serial.println("completed calibration");
-  if (cmdStatus ){
+  if (cmdStatus){
     //readCalibrationVector();
     delay(1000);
   }
-  delay(1000);
+  //delay(1000);
   
-  return true;
+  return cmdStatus;
 }
 
 
@@ -460,15 +615,6 @@ void  max32664::readCalibrationVector(){
 }
 
 
-
-void max32664::enableInterruptPin(){
-//ToDo
-
-  pinMode(MFIO_PIN, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(MFIO_PIN), mfioInterruptHndlr, FALLING);
-  
-}
-
 uint8_t max32664::hubBegin(){
 
   pinMode(MFIO_PIN, OUTPUT); 
@@ -481,9 +627,7 @@ uint8_t max32664::hubBegin(){
   delay(1000); 
   pinMode(MFIO_PIN, INPUT_PULLUP); // To be used as an interrupt later
 
-  //enableInterruptPin();
   readSensorHubVersion();
-  
   uint8_t responseByte = readByte(READ_DEVICE_MODE, 0x00); // 0x00 only possible Index Byte.
   
   return responseByte; 
@@ -500,14 +644,13 @@ bool max32664::readSensorHubVersion(){
   Wire.write(0xff);    
   Wire.write(0x03);    
   Wire.endTransmission();
- // delay(DELAY_CMD);
   
   Wire.requestFrom(SENSORHUB_ADDR, 4);
   statusByte = Wire.read();
   
-  if( statusByte ){
+  if(statusByte){
     
-    Serial.println("read algo version failed");
+    //Serial.println("read algo version failed");
     return false;
   }else{
 
@@ -519,9 +662,11 @@ bool max32664::readSensorHubVersion(){
       Serial.print(".");
     }
     Serial.println(" ");
+
     return true;
   }
 }
+
 
 uint8_t max32664::readByte(uint8_t data1, uint8_t data2 )
 {
@@ -562,6 +707,7 @@ bool max32664::writeByte(uint8_t data1, uint8_t data2)
   else
     return true; 
 }
+
 
 bool max32664::writeByte(uint8_t data1, uint8_t data2, uint8_t data3)
 {
