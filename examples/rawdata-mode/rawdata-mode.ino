@@ -15,6 +15,8 @@
 //    | RESET Pin        | 04                  |  Reset           | 
 //    |-----------------------------------------------------------|
 //
+//    Place your finger on the sebsor and open arduino serial plotter to view the ppg signal.
+//
 //    This software is licensed under the MIT License(http://opensource.org/licenses/MIT).
 //
 //    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT
@@ -32,13 +34,12 @@
 max32664 MAX32664(04/*Reset Pin*/, 05/* MFIO pin*/);
 
 void mfioInterruptHndlr(){
-  //Serial.println("i");
+  
 }
 
 void enableInterruptPin(){
-//ToDo
-
-  pinMode(mfioPin, INPUT_PULLUP);
+  
+ // pinMode(mfioPin, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(mfioPin), mfioInterruptHndlr, FALLING);
   
 }
