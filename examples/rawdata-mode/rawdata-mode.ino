@@ -29,7 +29,7 @@
 #include "max32664.h"
 #include <Wire.h>
 
-max32664 MAX32664;
+max32664 MAX32664(04/*Reset Pin*/, 05/* MFIO pin*/);
 
 void mfioInterruptHndlr(){
   //Serial.println("i");
@@ -38,8 +38,8 @@ void mfioInterruptHndlr(){
 void enableInterruptPin(){
 //ToDo
 
-  pinMode(MFIO_PIN, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(MFIO_PIN), mfioInterruptHndlr, FALLING);
+  pinMode(mfioPin, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(mfioPin), mfioInterruptHndlr, FALLING);
   
 }
 

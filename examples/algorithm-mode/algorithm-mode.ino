@@ -32,6 +32,7 @@
 max32664 MAX32664(04/*Reset Pin*/, 05/* MFIO pin*/);
 
 
+
 void mfioInterruptHndlr(){
   //Serial.println("i");
 }
@@ -66,6 +67,7 @@ void loadAlgomodeParameters(){
 }
 
 
+
 void setup(){
 
   Serial.begin(115200);
@@ -73,7 +75,7 @@ void setup(){
   Wire.begin();
 
   loadAlgomodeParameters();
-  
+
   int result = MAX32664.hubBegin();
   if (result == CMD_SUCCESS){
     Serial.println("Sensorhub begin!");
@@ -84,7 +86,7 @@ void setup(){
       delay(5000);
     }    
   }
-  
+
   bool ret = MAX32664.startBPTcalibration();
   while(!ret){      
       

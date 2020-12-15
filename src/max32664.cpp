@@ -232,6 +232,7 @@ uint8_t max32664::readNumSamples()
   Wire.beginTransmission(SENSORHUB_ADDR);
   Wire.write(0x12);    
   Wire.write(0x00);    
+
   Wire.endTransmission();
   
   Wire.requestFrom(SENSORHUB_ADDR, 2);
@@ -384,7 +385,7 @@ bool max32664::setDateTime(){
   
   uint8_t wrBuffer[14]= {0x50, 0x04, 0x04, 0x5c, 0xc2, 0x02, 0x00, 0xe0, 0x7f, 0x02, 0x00};
   bool ret = writeMultipleBytes(wrBuffer, 11);
-  
+
   return ret;
 }
 
@@ -422,6 +423,7 @@ bool  max32664::loadSysCalibrationValues(){
 
   uint8_t wrBuffer[6]= {0x50, 0x04, 0x01};
   memcpy(&wrBuffer[3], calibValSys, 3);
+
   bool ret = writeMultipleBytes(wrBuffer, 6);
 
   return ret;
@@ -432,6 +434,7 @@ bool  max32664::loadDiastolicCalibrationValues(){
 
   uint8_t wrBuffer[6]= {0x50, 0x04, 0x02};
   memcpy(&wrBuffer[3], calibValDia, 3);
+
   bool ret = writeMultipleBytes(wrBuffer, 6);
 
   return ret;  
@@ -594,6 +597,7 @@ bool max32664::startBPTcalibration(){
 //set intr th
   cmdStatus =writeByte(0x10, 0x01, 0x0f);
   if(!cmdStatus){
+
     return false;
   }
   delay(30);
@@ -602,6 +606,7 @@ bool max32664::startBPTcalibration(){
   cmdStatus =writeByte(0x44, 0x03, 0x01);
   if(!cmdStatus){
    // Serial.println("failed to enable afe");
+
     return false;
   }
   delay(30);
@@ -765,7 +770,7 @@ void  max32664::readCalibrationVector(){
   delay(10);
   if(!ret){
    // Serial.println("disable afe failed");
-    return false;
+    return;
   }
   
   //Disable BPT algorithm
@@ -773,7 +778,7 @@ void  max32664::readCalibrationVector(){
   delay(10);
   if(!ret){
    // Serial.println("failed to set raw data mode !!!");
-    return false;
+    return;
   }
 
   //readMultipleBytes(0x51, 0x04, 0x00, &calibVector[3], 823);
@@ -785,7 +790,7 @@ void  max32664::readCalibrationVector(){
     Serial.println(calibVector[i]);
     delayMicroseconds(10);
   }
- #endif
+#endif
   delay(1000);  
 }
 
