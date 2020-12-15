@@ -47,8 +47,9 @@ void enableInterruptPin(){
 void loadAlgomodeParameters(){
   
   algomodeInitialiser algoParameters;
-  /*  Replace the predefined values with your data taken from hospital
+  /*  Replace the predefined values with the calibration values taken with a reference spo2 device in a controlled environt.
       Please have a look here for more information, https://pdfserv.maximintegrated.com/en/an/an6921-measuring-blood-pressure-MAX32664D.pdf
+      https://github.com/Protocentral/protocentral-pulse-express/blob/master/docs/SpO2-Measurement-Maxim-MAX32664-Sensor-Hub.pdf
   */
   
   algoParameters.calibValSys[0] = 120;
