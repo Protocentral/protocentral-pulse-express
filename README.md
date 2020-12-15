@@ -1,11 +1,10 @@
-# protocentral-pulse-express
 
 Pulse Express
 ================================
 
 [Do I have to write an algorithm to calculate the Pulse-Ox (SpO2) and heart rate levels ? Not anymore, the Pulse Express does it for you.](https://protocentral.com/product/pulse-express-pulse-ox-heart-rate-sensor-with-max32664/?preview_id=10783&preview_nonce=12b54ac79b&_thumbnail_id=10790&preview=true)
 
-![Pulse Express Pulse-Ox & Heart Rate Sensor](extras/4806.jpg)
+![](docs/pulse_exp.jpg)
 
 Pulse Express is an efficient and versatile breakout board with integrated high-sensitivity optical sensors (MAX30102) and also a chip that does the calculations (biometric sensor hub MAX32664D). Integrating Maxim’s MAX32664 Version D makes Pulse Express unique, with an internal algorithm that works to measure different data as you start. With its built-in low power capability, the board is suitable for any wearable health for finger-based applications.
 
