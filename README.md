@@ -27,23 +27,19 @@ Includes:
 * 1x ProtoCentral Pulse Express breakout
 * 1x Welgro strap
 
-Repository Contents
--------------------
-* **/Software** - Arduino and Processing library and example sketches.
-* **/Hardware** - All Eagle design files (.brd, .sch)
-* **/extras** -   includes the datasheet
-
-
 Wiring the Breakout to your Arduino
 ------------------------------------
 Connection with the Arduino board is as follows:
  
-|Pulse pin label   | Arduino Connection   |Pin Function      |
-|----------------- |:--------------------:|-----------------:|
-| VCC              | +5V                  |  Supply voltage  |             
-| SCL              | A5                   |  Serial clock    |
-| SDA              | A4                   |  Serial data     |
-| GND              |                      |  Gnd             |
+ |Max32664 pin label| Arduino Connection  |Pin Function      |
+ |----------------- |---------------------|------------------|
+ | SDA              | A4                  |  Serial Data     |
+ | SCL              | A5                  |  Serial Clock    |
+ | Vin              | 5V                  |  Power           |
+ | GND              | Gnd                 |  Gnd             |
+ | MFIO Pin         | 05                  |  MFIO            |
+ | RESET Pin        | 04                  |  Reset           | 
+ |-----------------------------------------------------------|
 
 
 License Information
