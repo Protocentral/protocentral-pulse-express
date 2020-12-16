@@ -230,8 +230,8 @@ uint8_t max32664::readNumSamples()
   uint8_t statusByte;
 
   Wire.beginTransmission(SENSORHUB_ADDR);
-  Wire.write(0x12);    
-  Wire.write(0x00);    
+  Wire.write((uint8_t)0x12);    
+  Wire.write((uint8_t)0x00);    
 
   Wire.endTransmission();
   
