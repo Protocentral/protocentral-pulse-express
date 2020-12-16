@@ -39,8 +39,22 @@ Connection with the Arduino board is as follows:
  | GND              | Gnd                 |  Gnd             |
  | MFIO Pin         | 05                  |  MFIO            |
  | RESET Pin        | 04                  |  Reset           | 
- |-----------------------------------------------------------|
 
+
+**Instructions**
+
+*Raw Mode*
+
+* Make the connections as sown in the above table and upload the code
+* Open serial plotter with baudrate 115200
+* Place your finger on the sensor and view the ppg signal
+
+*Algorithm mode*
+
+* Update the spo2 calibration variables and your typical BP systolic and diastolic values in the *algorithm-mode.ino* file.
+* Make the connections as sown in the above table and upload the code
+* Open serial monitor and keep your finger on the sensor until calibration progress reaches 100 %
+* wait for few seconds to settle the algorithm data.
 
 License Information
 ===================
