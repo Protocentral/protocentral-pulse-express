@@ -40,7 +40,7 @@ void mfioInterruptHndlr(){
 void enableInterruptPin(){
   
  // pinMode(mfioPin, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(mfioPin), mfioInterruptHndlr, FALLING);
+  attachInterrupt(digitalPinToInterrupt(MAX32664.mfioPin), mfioInterruptHndlr, FALLING);
   
 }
 
