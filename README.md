@@ -1,8 +1,7 @@
-
-Pulse Express
+ProtoCentral Pulse Express with MAX30102 and MAX32664D
 ================================
 
-[Do I have to write an algorithm to calculate the Pulse-Ox (SpO2) and heart rate levels ? Not anymore, the Pulse Express does it for you.](https://protocentral.com/product/pulse-express-pulse-ox-heart-rate-sensor-with-max32664/?preview_id=10783&preview_nonce=12b54ac79b&_thumbnail_id=10790&preview=true)
+[If you don't already have one, you can buy a board from here](https://protocentral.com/product/pulse-express-pulse-ox-heart-rate-sensor-with-max32664/)
 
 ![](docs/pulse_exp.jpg)
 
