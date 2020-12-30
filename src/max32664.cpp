@@ -165,7 +165,7 @@ uint8_t max32664::readCalibSamples(){
 }
 
 
-uint8_t max32664::readRawSamples(int16_t * ppgBuff){
+uint8_t max32664::readRawSamples(int16_t * irBuff, int16_t * redBuff){
 
   uint8_t    ret = writeByte(0x00, 0x00);
   if(!ret){
@@ -200,9 +200,19 @@ uint8_t max32664::readRawSamples(int16_t * ppgBuff){
     unsigned long unsignedPpg = (unsigned long ) (ppg2 | ppg1 | ppg0);
 
     int16_t ppgFinal = (int16_t) (unsignedPpg)/10;
+
+
+    unsigned long red0 = (unsigned long ) readBuff[3];//readBuff[1];
+    red0 = red0 << 16;
+    unsigned long red1 = (unsigned long ) readBuff[4];
+    red1 = red1 << 8;
+    unsigned long red2 = (unsigned long ) readBuff[5];
+    unsigned long unsignedRed = (unsigned long ) (red2 | red1 | red0);
+
+    int16_t redFinal = (int16_t) (unsignedRed)/10;
    
-    static uint8_t count = 0;
-    ppgBuff[i] = ppgFinal;
+    irBuff[i] = ppgFinal;
+    redBuff[i] = redFinal;
   }
 
   return (numSamples);
@@ -230,8 +240,8 @@ uint8_t max32664::readNumSamples()
   uint8_t statusByte;
 
   Wire.beginTransmission(SENSORHUB_ADDR);
-  Wire.write(0x12);    
-  Wire.write(0x00);    
+  Wire.write((uint8_t)0x12);    
+  Wire.write((uint8_t)0x00);    
 
   Wire.endTransmission();
   

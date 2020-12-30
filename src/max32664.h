@@ -36,7 +36,7 @@
 
 #define SENSORHUB_ADDR  0x55
 #define CALIBVECTOR_SIZE  827
-#define  RAWDATA_BUFFLEN 300
+#define  RAWDATA_BUFFLEN 200
 #define  ERR_UNKNOWN      0xff
 
 
@@ -80,7 +80,7 @@ class max32664
     bool startBPTcalibration();
     bool enterAppMode();
 
-    uint8_t readRawSamples(int16_t * ppgBuff);
+    uint8_t readRawSamples(int16_t * irBuff, int16_t * redBuff);
     bool configRawdataMode();
     void loadAlgorithmParameters(algomodeInitialiser * algoParameters);
 

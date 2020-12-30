@@ -11,10 +11,10 @@
 //    | SCL              | A5                  |  Serial Clock    |
 //    | Vin              | 5V                  |  Power           |
 //    | GND              | Gnd                 |  Gnd             |
-//    | MFIO Pin         | 05                  |  MFIO            |
-//    | RESET Pin        | 04                  |  Reset           | 
+//    | MFIO Pin         | 02                  |  MFIO            |
+//    | RESET Pin        | 04                  |  Reset           |
 //    |-----------------------------------------------------------|
-//    
+//
 //    This software is licensed under the MIT License(http://opensource.org/licenses/MIT).
 //
 //    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT
@@ -29,8 +29,10 @@
 #include <Wire.h>
 #include "max32664.h"
 
-max32664 MAX32664(04/*Reset Pin*/, 05/* MFIO pin*/);
+#define RESET_PIN 04
+#define MFIO_PIN 02
 
+max32664 MAX32664(RESET_PIN, MFIO_PIN);
 
 
 void mfioInterruptHndlr(){
@@ -41,25 +43,25 @@ void enableInterruptPin(){
 
   //pinMode(mfioPin, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(MAX32664.mfioPin), mfioInterruptHndlr, FALLING);
-  
+
 }
 
 void loadAlgomodeParameters(){
-  
+
   algomodeInitialiser algoParameters;
   /*  Replace the predefined values with the calibration values taken with a reference spo2 device in a controlled environt.
       Please have a look here for more information, https://pdfserv.maximintegrated.com/en/an/an6921-measuring-blood-pressure-MAX32664D.pdf
       https://github.com/Protocentral/protocentral-pulse-express/blob/master/docs/SpO2-Measurement-Maxim-MAX32664-Sensor-Hub.pdf
   */
-  
+
   algoParameters.calibValSys[0] = 120;
   algoParameters.calibValSys[1] = 122;
   algoParameters.calibValSys[2] = 125;
-  
+
   algoParameters.calibValDia[0] = 80;
   algoParameters.calibValDia[1] = 81;
   algoParameters.calibValDia[2] = 82;
-  
+
   algoParameters.spo2CalibCoefA = 1.5958422;
   algoParameters.spo2CalibCoefB = -34.659664;
   algoParameters.spo2CalibCoefC = 112.68987;
@@ -71,7 +73,7 @@ void loadAlgomodeParameters(){
 
 void setup(){
 
-  Serial.begin(115200);
+  Serial.begin(57600);
 
   Wire.begin();
 
@@ -85,12 +87,12 @@ void setup(){
     while(1){
       Serial.println("Could not communicate with the sensor! please make proper connections");
       delay(5000);
-    }    
+    }
   }
 
   bool ret = MAX32664.startBPTcalibration();
-  while(!ret){      
-      
+  while(!ret){
+
     delay(10000);
     Serial.println("failed calib, please retsart");
     //ret = MAX32664.startBPTcalibration();
@@ -100,16 +102,16 @@ void setup(){
 
   //Serial.println("start in estimation mode");
   ret = MAX32664.configAlgoInEstimationMode();
-  while(!ret){      
-      
+  while(!ret){
+
     //Serial.println("failed est mode");
     ret = MAX32664.configAlgoInEstimationMode();
     delay(10000);
   }
-  
+
   //MAX32664.enableInterruptPin();
   Serial.println("Getting the device ready..");
-  delay(1000);  
+  delay(1000);
 }
 
 void loop(){
@@ -117,16 +119,16 @@ void loop(){
   uint8_t num_samples = MAX32664.readSamples();
 
   if(num_samples){
-    
+
     Serial.print("sys = ");
     Serial.print(MAX32664.max32664Output.sys);
     Serial.print(", dia = ");
     Serial.print(MAX32664.max32664Output.dia);
     Serial.print(", hr = ");
-    Serial.print(MAX32664.max32664Output.hr);  
+    Serial.print(MAX32664.max32664Output.hr);
     Serial.print(" spo2 = ");
     Serial.println(MAX32664.max32664Output.spo2);
   }
-  
+
   delay(100);
 }

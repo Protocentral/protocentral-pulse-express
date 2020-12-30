@@ -11,8 +11,8 @@
 //    | SCL              | A5                  |  Serial Clock    |
 //    | Vin              | 5V                  |  Power           |
 //    | GND              | Gnd                 |  Gnd             |
-//    | MFIO Pin         | 05                  |  MFIO            |
-//    | RESET Pin        | 04                  |  Reset           | 
+//    | MFIO Pin         | 02                  |  MFIO            |
+//    | RESET Pin        | 04                  |  Reset           |
 //    |-----------------------------------------------------------|
 //
 //    Place your finger on the sebsor and open arduino serial plotter to view the ppg signal.
@@ -31,62 +31,65 @@
 #include "max32664.h"
 #include <Wire.h>
 
-max32664 MAX32664(04/*Reset Pin*/, 05/* MFIO pin*/);
+#define RESET_PIN 04
+#define MFIO_PIN 02
+
+max32664 MAX32664(RESET_PIN/*Reset Pin*/, MFIO_PIN/* MFIO pin*/);
 
 void mfioInterruptHndlr(){
-  
+
 }
 
 void enableInterruptPin(){
-  
+
  // pinMode(mfioPin, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(MAX32664.mfioPin), mfioInterruptHndlr, FALLING);
-  
 }
 
 void setup(){
 
-  Serial.begin(115200);
+  Serial.begin(57600);
 
   Wire.begin();
   int result = MAX32664.hubBegin();
-  
+
   if (result == 0){
     Serial.println("Sensor started!");
   }else{
-    
+
     //stay here.
     while(1){
       Serial.println("Could not communicate with the sensor!!!");
       delay(30000);
-    }    
+    }
   }
 
   bool ret = MAX32664.configRawdataMode();
   while(!ret){
-      
+
     Serial.println("failed to configure Raw data mode, trying again in 30 Sec");
     ret = MAX32664.configRawdataMode();
     delay(30000);
   }
 
   Serial.println("Geting the device ready..");
-  delay(2000); 
-  
+  delay(2000);
 }
 
 void loop(){
 
-  static int16_t ppgBuff[RAWDATA_BUFFLEN];
+  static int16_t irBuff[RAWDATA_BUFFLEN];
+  static int16_t redBuff[RAWDATA_BUFFLEN];
   static uint16_t buff_counter = 0;
-  
-  uint8_t no_samples = MAX32664.readRawSamples(&ppgBuff[buff_counter]);
+
+  uint8_t num_samples = MAX32664.readRawSamples(&irBuff[buff_counter], redBuff);
   ///Serial.print("num samples ");
-  //Serial.println(no_samples);
+  //Serial.println(num_samples);
 
-  for(int i=0; i<no_samples; i++){
+  for(int i=0; i<num_samples; i++){
 
-    Serial.println(ppgBuff[i]);
+    Serial.println(irBuff[i]);
+    //Serial.println(redBuff[i]);
     delay(2);
   }
 }
