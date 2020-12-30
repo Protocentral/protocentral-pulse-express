@@ -38,14 +38,14 @@
 #define CES_CMDIF_PKT_START_2   0xFA
 #define CES_CMDIF_TYPE_DATA     0x02
 #define CES_CMDIF_PKT_STOP      0x0B
-#define DATA_LEN                16
+#define DATA_LEN                9
 #define ZERO                    0
 
 #define RESET_PIN 04
 #define MFIO_PIN 02
 #define RAWDATA_BUFFLEN 200
 
-volatile char DataPacket[10];
+volatile char DataPacket[DATA_LEN];
 const char DataPacketFooter[2] = {ZERO, CES_CMDIF_PKT_STOP};
 const char DataPacketHeader[5] = {CES_CMDIF_PKT_START_1, CES_CMDIF_PKT_START_2, DATA_LEN, ZERO, CES_CMDIF_TYPE_DATA};
 
@@ -75,7 +75,7 @@ void sendDataThroughUart(int16_t ir, int16_t red){
   }
 
   //send actual data
-  for(int i=0; i<9; i++){
+  for(int i=0; i<DATA_LEN; i++){
 
     Serial.write(DataPacket[i]);
   }
@@ -119,8 +119,8 @@ void setup(){
 
 void loop(){
 
-  static int16_t irBuff[MAX32664.rawDataBuffLen];
-  static int16_t redBuff[MAX32664.rawDataBuffLen];
+  static int16_t irBuff[RAWDATA_BUFFLEN];
+  static int16_t redBuff[RAWDATA_BUFFLEN];
 
   uint8_t num_samples = MAX32664.readRawSamples(irBuff, redBuff);
   ///Serial.print("num samples ");
