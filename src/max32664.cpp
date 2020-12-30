@@ -183,7 +183,7 @@ uint8_t max32664::readRawSamples(int16_t * irBuff, int16_t * redBuff){
     return 0;
   }else{
 
-    if(numSamples > RAWDATA_BUFFLEN) numSamples = RAWDATA_BUFFLEN;
+    if(numSamples > rawDataBuffLen) numSamples = rawDataBuffLen;
     //Serial.print("num samples ");
    // Serial.println(numSamples);
   }
@@ -213,6 +213,50 @@ uint8_t max32664::readRawSamples(int16_t * irBuff, int16_t * redBuff){
    
     irBuff[i] = ppgFinal;
     redBuff[i] = redFinal;
+  }
+
+  return (numSamples);
+}
+
+
+
+uint8_t max32664::readRawSamples(int16_t * irBuff){
+
+  uint8_t    ret = writeByte(0x00, 0x00);
+  if(!ret){
+    Serial.println("failed to read status, could not read samples !!!");
+    return 0;
+  }
+
+  uint8_t readLen = 13;
+  uint8_t readBuff[20]={0};
+
+  //Read number of samples available in the fifo. function returns 0 if command fails or no new samples available
+  uint8_t numSamples = readNumSamples();
+  if(numSamples == 0){
+    //Serial.println("No samples available");
+    return 0;
+  }else{
+
+    if(numSamples > rawDataBuffLen) numSamples = rawDataBuffLen;
+    //Serial.print("num samples ");
+   // Serial.println(numSamples);
+  }
+
+  for (size_t i = 0; i < numSamples; i++) {
+     
+    readMultipleBytes(0x12, 0x01, readBuff, readLen);
+
+    unsigned long ppg0 = (unsigned long ) readBuff[0];//readBuff[1];
+    ppg0 = ppg0 << 16;
+    unsigned long ppg1 = (unsigned long ) readBuff[1];
+    ppg1 = ppg1 << 8;
+    unsigned long ppg2 = (unsigned long ) readBuff[2];
+    unsigned long unsignedPpg = (unsigned long ) (ppg2 | ppg1 | ppg0);
+
+    int16_t ppgFinal = (int16_t) (unsignedPpg)/10;
+
+    irBuff[i] = ppgFinal;
   }
 
   return (numSamples);

@@ -33,8 +33,9 @@
 
 #define RESET_PIN 04
 #define MFIO_PIN 02
+#define RAWDATA_BUFFLEN 400
 
-max32664 MAX32664(RESET_PIN/*Reset Pin*/, MFIO_PIN/* MFIO pin*/);
+max32664 MAX32664(RESET_PIN, MFIO_PIN, RAWDATA_BUFFLEN);
 
 void mfioInterruptHndlr(){
 
@@ -79,10 +80,9 @@ void setup(){
 void loop(){
 
   static int16_t irBuff[RAWDATA_BUFFLEN];
-  static int16_t redBuff[RAWDATA_BUFFLEN];
-  static uint16_t buff_counter = 0;
+  //static int16_t redBuff[RAWDATA_BUFFLEN];
 
-  uint8_t num_samples = MAX32664.readRawSamples(&irBuff[buff_counter], redBuff);
+  uint8_t num_samples = MAX32664.readRawSamples(irBuff);
   ///Serial.print("num samples ");
   //Serial.println(num_samples);
 
@@ -90,6 +90,6 @@ void loop(){
 
     Serial.println(irBuff[i]);
     //Serial.println(redBuff[i]);
-    delay(2);
+    delay(3);
   }
 }

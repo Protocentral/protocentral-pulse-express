@@ -43,12 +43,13 @@
 
 #define RESET_PIN 04
 #define MFIO_PIN 02
+#define RAWDATA_BUFFLEN 200
 
-volatile char DataPacket[16];
+volatile char DataPacket[10];
 const char DataPacketFooter[2] = {ZERO, CES_CMDIF_PKT_STOP};
 const char DataPacketHeader[5] = {CES_CMDIF_PKT_START_1, CES_CMDIF_PKT_START_2, DATA_LEN, ZERO, CES_CMDIF_TYPE_DATA};
 
-max32664 MAX32664(RESET_PIN, MFIO_PIN);
+max32664 MAX32664(RESET_PIN, MFIO_PIN, RAWDATA_BUFFLEN);
 
 void mfioInterruptHndlr(){
 
@@ -59,9 +60,6 @@ void enableInterruptPin(){
  // pinMode(mfioPin, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(MAX32664.mfioPin), mfioInterruptHndlr, FALLING);
 }
-
-
-
 
 void sendDataThroughUart(int16_t ir, int16_t red){
 
@@ -117,13 +115,12 @@ void setup(){
 
   Serial.println("Geting the device ready..");
   delay(2000);
-
 }
 
 void loop(){
 
-  static int16_t irBuff[RAWDATA_BUFFLEN];
-  static int16_t redBuff[RAWDATA_BUFFLEN];
+  static int16_t irBuff[MAX32664.rawDataBuffLen];
+  static int16_t redBuff[MAX32664.rawDataBuffLen];
 
   uint8_t num_samples = MAX32664.readRawSamples(irBuff, redBuff);
   ///Serial.print("num samples ");

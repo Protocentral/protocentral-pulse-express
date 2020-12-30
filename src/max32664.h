@@ -81,6 +81,7 @@ class max32664
     bool enterAppMode();
 
     uint8_t readRawSamples(int16_t * irBuff, int16_t * redBuff);
+    uint8_t readRawSamples(int16_t * irBuff);
     bool configRawdataMode();
     void loadAlgorithmParameters(algomodeInitialiser * algoParameters);
 
@@ -92,10 +93,12 @@ class max32664
     float spo2CalibCoefA; 
     float spo2CalibCoefB; 
     float spo2CalibCoefC;
+    uint8_t rawDataBuffLen;
     
-    max32664(uint8_t reset, uint8_t mfio){
+    max32664(uint8_t reset, uint8_t mfio, uint16_t buffLen){
       ResetPin = reset;
       mfioPin = mfio;
+      rawDataBuffLen = buffLen;
     }
 
 
