@@ -165,7 +165,7 @@ uint8_t max32664::readCalibSamples(){
 }
 
 
-uint8_t max32664::readRawSamples(int16_t * ppgBuff){
+uint8_t max32664::readRawSamples(int16_t * irBuff, int16_t * redBuff){
 
   uint8_t    ret = writeByte(0x00, 0x00);
   if(!ret){
@@ -183,7 +183,7 @@ uint8_t max32664::readRawSamples(int16_t * ppgBuff){
     return 0;
   }else{
 
-    if(numSamples > RAWDATA_BUFFLEN) numSamples = RAWDATA_BUFFLEN;
+    if(numSamples > rawDataBuffLen) numSamples = rawDataBuffLen;
     //Serial.print("num samples ");
    // Serial.println(numSamples);
   }
@@ -200,9 +200,63 @@ uint8_t max32664::readRawSamples(int16_t * ppgBuff){
     unsigned long unsignedPpg = (unsigned long ) (ppg2 | ppg1 | ppg0);
 
     int16_t ppgFinal = (int16_t) (unsignedPpg)/10;
+
+
+    unsigned long red0 = (unsigned long ) readBuff[3];//readBuff[1];
+    red0 = red0 << 16;
+    unsigned long red1 = (unsigned long ) readBuff[4];
+    red1 = red1 << 8;
+    unsigned long red2 = (unsigned long ) readBuff[5];
+    unsigned long unsignedRed = (unsigned long ) (red2 | red1 | red0);
+
+    int16_t redFinal = (int16_t) (unsignedRed)/10;
    
-    static uint8_t count = 0;
-    ppgBuff[i] = ppgFinal;
+    irBuff[i] = ppgFinal;
+    redBuff[i] = redFinal;
+  }
+
+  return (numSamples);
+}
+
+
+
+uint8_t max32664::readRawSamples(int16_t * irBuff){
+
+  uint8_t    ret = writeByte(0x00, 0x00);
+  if(!ret){
+    Serial.println("failed to read status, could not read samples !!!");
+    return 0;
+  }
+
+  uint8_t readLen = 13;
+  uint8_t readBuff[20]={0};
+
+  //Read number of samples available in the fifo. function returns 0 if command fails or no new samples available
+  uint8_t numSamples = readNumSamples();
+  if(numSamples == 0){
+    //Serial.println("No samples available");
+    return 0;
+  }else{
+
+    if(numSamples > rawDataBuffLen) numSamples = rawDataBuffLen;
+    //Serial.print("num samples ");
+   // Serial.println(numSamples);
+  }
+
+  for (size_t i = 0; i < numSamples; i++) {
+     
+    readMultipleBytes(0x12, 0x01, readBuff, readLen);
+
+    unsigned long ppg0 = (unsigned long ) readBuff[0];//readBuff[1];
+    ppg0 = ppg0 << 16;
+    unsigned long ppg1 = (unsigned long ) readBuff[1];
+    ppg1 = ppg1 << 8;
+    unsigned long ppg2 = (unsigned long ) readBuff[2];
+    unsigned long unsignedPpg = (unsigned long ) (ppg2 | ppg1 | ppg0);
+
+    int16_t ppgFinal = (int16_t) (unsignedPpg)/10;
+
+    irBuff[i] = ppgFinal;
   }
 
   return (numSamples);

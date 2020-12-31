@@ -36,7 +36,7 @@
 
 #define SENSORHUB_ADDR  0x55
 #define CALIBVECTOR_SIZE  827
-#define  RAWDATA_BUFFLEN 300
+#define  RAWDATA_BUFFLEN 200
 #define  ERR_UNKNOWN      0xff
 
 
@@ -80,7 +80,8 @@ class max32664
     bool startBPTcalibration();
     bool enterAppMode();
 
-    uint8_t readRawSamples(int16_t * ppgBuff);
+    uint8_t readRawSamples(int16_t * irBuff, int16_t * redBuff);
+    uint8_t readRawSamples(int16_t * irBuff);
     bool configRawdataMode();
     void loadAlgorithmParameters(algomodeInitialiser * algoParameters);
 
@@ -92,10 +93,12 @@ class max32664
     float spo2CalibCoefA; 
     float spo2CalibCoefB; 
     float spo2CalibCoefC;
+    uint8_t rawDataBuffLen;
     
-    max32664(uint8_t reset, uint8_t mfio){
+    max32664(uint8_t reset, uint8_t mfio, uint16_t buffLen){
       ResetPin = reset;
       mfioPin = mfio;
+      rawDataBuffLen = buffLen;
     }
 
 
