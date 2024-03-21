@@ -39,6 +39,9 @@
 #define  RAWDATA_BUFFLEN 200
 #define  ERR_UNKNOWN      0xff
 
+#define MAX_BUFF_LEN  1024
+#define MAX_SAMPLES   4
+
 
 typedef struct{
 
@@ -80,8 +83,8 @@ class max32664
     bool startBPTcalibration();
     bool enterAppMode();
 
-    uint8_t readRawSamples(int16_t * irBuff, int16_t * redBuff);
-    uint8_t readRawSamples(int16_t * irBuff);
+    uint8_t readRawSamples(uint32_t * irBuff, uint32_t * redBuff);
+    uint8_t readRawSamples(uint32_t * irBuff);
     bool configRawdataMode();
     void loadAlgorithmParameters(algomodeInitialiser * algoParameters);
 
@@ -93,7 +96,7 @@ class max32664
     float spo2CalibCoefA; 
     float spo2CalibCoefB; 
     float spo2CalibCoefC;
-    uint8_t rawDataBuffLen;
+    uint16_t rawDataBuffLen;
     
     max32664(uint8_t reset, uint8_t mfio, uint16_t buffLen){
       ResetPin = reset;
@@ -110,8 +113,8 @@ class max32664
     bool writeByte(uint8_t data1, uint8_t data2, uint8_t data3);
     bool writeByte(uint8_t data1, uint8_t data2, uint8_t data3, uint8_t data4);
     uint8_t readNumSamples();
-    bool readMultipleBytes(uint8_t data1, uint8_t data2, uint8_t * readBuff, uint8_t readLen);
-    bool readMultipleBytes(uint8_t data1, uint8_t data2, uint8_t data3, uint8_t * readBuff, uint8_t readLen);
+    bool readMultipleBytes(uint8_t data1, uint8_t data2, uint8_t * readBuff, uint16_t readLen);
+    bool readMultipleBytes(uint8_t data1, uint8_t data2, uint8_t data3, uint8_t * readBuff, uint16_t readLen);
     bool writeMultipleBytes(uint8_t * wrBuff, uint8_t wrLen);
     bool loadBPTcalibrationVector();
     bool setDateTime();
