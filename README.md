@@ -1,4 +1,4 @@
-ProtoCentral Pulse Express with MAX30102 and MAX32664D
+Protocentral Pulse Express with MAX30102 and MAX32664D
 ================================
 
 [If you don't already have one, you can buy a board from here](https://protocentral.com/product/pulse-express-pulse-ox-heart-rate-sensor-with-max32664/)
@@ -9,7 +9,9 @@ Pulse Express is an efficient and versatile breakout board with integrated high-
 
 **Note: This device is only meant to be used for research & development purposes and is NOT to be used as a medical device. This product is not FDA, CE or FCC approved for consumer use.** 
 
-Features:
+Features
+----------
+
 * Integrates a high-sensitivity pulse oximeter and heart rate sensor (MAX30102).
 * Integrated biometric sensor hub (MAX32664)
 * In-built accelerometer for robust detection and compensation of motion artifacts(Optional).
@@ -21,7 +23,7 @@ Features:
   Estimated Blood Pressure.
 * Dimensions: 35 mm x 17  mm
 
-Includes:
+Includes
 ----------
 * 1x ProtoCentral Pulse Express breakout
 * 1x Welgro strap
@@ -54,6 +56,15 @@ Connection with the Arduino board is as follows:
 * Make the connections as sown in the above table and upload the code
 * Open serial monitor and keep your finger on the sensor until calibration progress reaches 100 %
 * wait for few seconds to settle the algorithm data.
+
+
+<center>
+<br>
+<a href="https://protocentral.github.io/docs/getting-started-with-PulseExpress/" target="_blank">
+  <button>Get Started with Pulse Express with MAX30102 and MAX32664D Guide</button>
+</a>
+</center>
+</br>
 
 License Information
 ===================
