@@ -1,12 +1,12 @@
 //////////////////////////////////////////////////////////////////////////////////////////
 //
-//    Demo code for the protoCentral MAX32664 breakout board
+//    Demo code for the protocentral MAX32664 breakout board
 //
 //    Author: Joice Tm
-//    Copyright (c) 2020 ProtoCentral
+//    Copyright (c) 2020 protocentral
 //
 //    This example plots the raw PPG signal through serial UART on openview processing GUI.
-//    GUI URL: https://github.com/Protocentral/protocentral_openview.git
+//    GUI URL: https://github.com/protocentral/protocentral_openview.git
 //
 //    |Max32664 pin label| Arduino Connection  |Pin Function      |
 //    |----------------- |---------------------|------------------|

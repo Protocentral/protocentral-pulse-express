@@ -25,7 +25,7 @@ Features
 
 Includes
 ----------
-* 1x ProtoCentral Pulse Express breakout
+* 1x Protocentral Pulse Express breakout
 * 1x Welgro strap
 
 Wiring the Breakout to your Arduino
@@ -58,9 +58,9 @@ Connection with the Arduino board is as follows:
 * wait for few seconds to settle the algorithm data.
 
 
-<center>
 <br>
-<a href="https://protocentral.github.io/docs/getting-started-with-PulseExpress/" target="_blank">
+<center>
+<a href="https://docs.protocentral.com/getting-started-with-PulseExpress/" target="_blank">
   <button>Get Started with Pulse Express with MAX30102 and MAX32664D Guide</button>
 </a>
 </center>

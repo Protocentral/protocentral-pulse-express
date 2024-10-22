@@ -1,9 +1,9 @@
 //////////////////////////////////////////////////////////////////////////////////////////
 //
-//    Demo code for the protoCentral MAX32664 breakout board
+//    Demo code for the protocentral MAX32664 breakout board
 //
 //    Author: Joice Tm
-//    Copyright (c) 2020 ProtoCentral
+//    Copyright (c) 2020 protocentral
 //
 //    |Max32664 pin label| Arduino Connection  |Pin Function      |
 //    |----------------- |---------------------|------------------|
@@ -52,7 +52,7 @@ void loadAlgomodeParameters(){
   algomodeInitialiser algoParameters;
   /*  Replace the predefined values with the calibration values taken with a reference spo2 device in a controlled environt.
       Please have a look here for more information, https://pdfserv.maximintegrated.com/en/an/an6921-measuring-blood-pressure-MAX32664D.pdf
-      https://github.com/Protocentral/protocentral-pulse-express/blob/master/docs/SpO2-Measurement-Maxim-MAX32664-Sensor-Hub.pdf
+      https://github.com/protocentral/protocentral-pulse-express/blob/master/docs/SpO2-Measurement-Maxim-MAX32664-Sensor-Hub.pdf
   */
 
   algoParameters.calibValSys[0] = 120;
