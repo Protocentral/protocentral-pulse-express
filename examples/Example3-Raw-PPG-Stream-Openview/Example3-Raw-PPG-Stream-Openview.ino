@@ -129,6 +129,6 @@ void loop(){
   for(int i=0; i<num_samples; i++){
 
     sendDataThroughUart(irBuff[i], redBuff[i]);
-    delay(2);
+    //delay(2);
   }
 }
