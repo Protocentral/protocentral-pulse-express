@@ -1,35 +1,19 @@
 Protocentral Pulse Express with MAX30102 and MAX32664D
 ================================
 
-[If you don't already have one, you can buy a board from here](https://protocentral.com/product/pulse-express-pulse-ox-heart-rate-sensor-with-max32664/)
+[![Compile Examples](https://github.com/Protocentral/protocentral-pulse-express/workflows/Compile%20Examples/badge.svg)](https://github.com/Protocentral/protocentral-pulse-express/actions?workflow=Compile+Examples)
 
-![](docs/pulse_exp.jpg)
+
+## Don't have one? [Buy it here](https://protocentral.com/product/pulse-express-pulse-ox-heart-rate-sensor-with-max32664/)
+
+![](assets/pulse_exp.jpg)
 
 Pulse Express is an efficient and versatile breakout board with integrated high-sensitivity optical sensors (MAX30102) and also a chip that does the calculations (biometric sensor hub MAX32664D). Integrating Maxim’s MAX32664 Version D makes Pulse Express unique, with an internal algorithm that works to measure different data as you start. With its built-in low power capability, the board is suitable for any wearable health for finger-based applications.
 
 **Note: This device is only meant to be used for research & development purposes and is NOT to be used as a medical device. This product is not FDA, CE or FCC approved for consumer use.** 
 
-Features
-----------
+## Hardware Setup
 
-* Integrates a high-sensitivity pulse oximeter and heart rate sensor (MAX30102).
-* Integrated biometric sensor hub (MAX32664)
-* In-built accelerometer for robust detection and compensation of motion artifacts(Optional).
-* Easy-to-use I2C interface to connect to any host microcontroller.
-* Ultra-Low Power
-* Algorithms Measure:
-  Pulse Heart Rate,
-  Pulse Blood Oxygen Saturation (SpO2),
-  Estimated Blood Pressure.
-* Dimensions: 35 mm x 17  mm
-
-Includes
-----------
-* 1x Protocentral Pulse Express breakout
-* 1x Welgro strap
-
-Wiring the Breakout to your Arduino
-------------------------------------
 Connection with the Arduino board is as follows:
  
  |Max32664 pin label| Arduino Connection  |Pin Function      |
@@ -42,29 +26,15 @@ Connection with the Arduino board is as follows:
  | RESET Pin        | 04                  |  Reset           | 
 
 
-**Instructions**
+## Visualizing Output
 
-*Raw Mode*
+![](assets/pulse_express_7sec.gif)
 
-* Make the connections as sown in the above table and upload the code
-* Open serial plotter with baudrate 115200
-* Place your finger on the sensor and view the ppg signal
-
-*Algorithm mode*
-
-* Update the spo2 calibration variables and your typical BP systolic and diastolic values in the *algorithm-mode.ino* file.
-* Make the connections as sown in the above table and upload the code
-* Open serial monitor and keep your finger on the sensor until calibration progress reaches 100 %
-* wait for few seconds to settle the algorithm data.
-
-
-<br>
 <center>
-<a href="https://docs.protocentral.com/getting-started-with-PulseExpress/" target="_blank">
-  <button>Get Started with Pulse Express with MAX30102 and MAX32664D Guide</button>
-</a>
+
+[Pulse Express with MAX30102 and MAX32664D Documentation](https://docs.protocentral.com/getting-started-with-PulseExpress)
+
 </center>
-</br>
 
 License Information
 ===================
