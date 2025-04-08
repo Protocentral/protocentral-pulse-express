@@ -30,11 +30,9 @@ Connection with the Arduino board is as follows:
 
 ![](assets/pulse_express_7sec.gif)
 
-<center>
 
-[Pulse Express with MAX30102 and MAX32664D Documentation](https://docs.protocentral.com/getting-started-with-PulseExpress)
+## For further details, refer [the documentation on Pulse Express board](https://docs.protocentral.com/getting-started-with-PulseExpress)
 
-</center>
 
 License Information
 ===================
