@@ -1,0 +1,66 @@
+#######################################
+# Syntax Coloring Map For Pulse Express
+#######################################
+
+#######################################
+# Class (KEYWORD1)
+#######################################
+
+Max32664	KEYWORD1
+Max32664Status	KEYWORD1
+Max32664Version	KEYWORD1
+Max32664Caps	KEYWORD1
+Max32664DateTime	KEYWORD1
+Max32664Spo2Coeffs	KEYWORD1
+Max32664CalibrationRef	KEYWORD1
+Max32664LegacyCalibrationRefs	KEYWORD1
+Max32664BpStatus	KEYWORD1
+Max32664Sample	KEYWORD1
+Max32664RawSample	KEYWORD1
+
+#######################################
+# Methods and Functions (KEYWORD2)
+#######################################
+
+# Lifecycle
+begin	KEYWORD2
+setDebug	KEYWORD2
+setDateTime	KEYWORD2
+version	KEYWORD2
+algoVersion	KEYWORD2
+caps	KEYWORD2
+mfioPin	KEYWORD2
+
+# Calibration
+startCalibration	KEYWORD2
+readSample	KEYWORD2
+readCalibrationVector	KEYWORD2
+
+# Estimation
+loadCalibrationVector	KEYWORD2
+startEstimation	KEYWORD2
+readSamples	KEYWORD2
+
+# Raw mode
+startRaw	KEYWORD2
+readRaw	KEYWORD2
+
+# Teardown
+stop	KEYWORD2
+
+# Sample helpers
+heartRate	KEYWORD2
+spo2	KEYWORD2
+rValue	KEYWORD2
+atLeast	KEYWORD2
+
+#######################################
+# Constants (LITERAL1)
+#######################################
+
+MAX32664_I2C_ADDR	LITERAL1
+MAX32664_STATUS_SENSOR_COMM	LITERAL1
+MAX32664_STATUS_DATA_READY	LITERAL1
+MAX32664_STATUS_FIFO_OUT_OVR	LITERAL1
+MAX32664_STATUS_FIFO_IN_OVR	LITERAL1
+MAX32664_STATUS_DEVICE_BUSY	LITERAL1
