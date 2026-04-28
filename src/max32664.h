@@ -333,17 +333,25 @@ private:
         bool deviceBusy;
     };
 
-    // I2C primitives: each one applies the appropriate CMD_DELAY internally
-    // and returns Status::Ok only when the hub status byte itself is 0x00.
-    Max32664Status writeCmd(uint8_t fam, uint8_t idx, uint16_t cmdDelayMs = 2);
-    Max32664Status writeCmd(uint8_t fam, uint8_t idx, uint8_t v0, uint16_t cmdDelayMs = 2);
-    Max32664Status writeCmd(uint8_t fam, uint8_t idx, uint8_t v0, uint8_t v1, uint16_t cmdDelayMs = 2);
-    Max32664Status writeCmd3(uint8_t fam, uint8_t idx, uint8_t v0, uint8_t v1, uint8_t v2, uint16_t cmdDelayMs = 2);
+    // I2C primitives. Each thin wrapper builds a small command frame on the
+    // stack and routes it through writeImpl()/readImpl(), which apply the
+    // CMD_DELAY, validate the hub status byte, and retry on 0xFE.
+    Max32664Status writeCmd(uint8_t fam, uint8_t idx, uint16_t cmdDelayMs = 0);
+    Max32664Status writeCmd(uint8_t fam, uint8_t idx, uint8_t v0, uint16_t cmdDelayMs = 0);
+    Max32664Status writeCmd(uint8_t fam, uint8_t idx, uint8_t v0, uint8_t v1, uint16_t cmdDelayMs = 0);
+    Max32664Status writeCmd3(uint8_t fam, uint8_t idx, uint8_t v0, uint8_t v1, uint8_t v2, uint16_t cmdDelayMs = 0);
     Max32664Status writeCmd(uint8_t fam, uint8_t idx, const uint8_t *payload, size_t len, uint16_t cmdDelayMs);
     Max32664Status writeCmd(uint8_t fam, uint8_t idx, uint8_t sub, const uint8_t *payload, size_t len, uint16_t cmdDelayMs);
 
-    Max32664Status readBytes(uint8_t fam, uint8_t idx, uint8_t *out, size_t len, uint16_t cmdDelayMs = 2);
-    Max32664Status readBytes(uint8_t fam, uint8_t idx, uint8_t sub, uint8_t *out, size_t len, uint16_t cmdDelayMs = 2);
+    Max32664Status readBytes(uint8_t fam, uint8_t idx, uint8_t *out, size_t len, uint16_t cmdDelayMs = 0);
+    Max32664Status readBytes(uint8_t fam, uint8_t idx, uint8_t sub, uint8_t *out, size_t len, uint16_t cmdDelayMs = 0);
+
+    // Underlying send-then-status helpers with retry-on-0xFE. `frame` holds
+    // the command bytes (fam, idx, optional sub, optional payload) — the
+    // caller must build it on the stack before invoking these.
+    Max32664Status writeImpl(const uint8_t *frame, size_t frameLen, uint16_t cmdDelayMs);
+    Max32664Status readImpl(const uint8_t *frame, size_t frameLen,
+                            uint8_t *out, size_t outLen, uint16_t cmdDelayMs);
 
     // Procedural pieces from UG6921 Tables 2/5/6.
     Max32664Status hardReset();

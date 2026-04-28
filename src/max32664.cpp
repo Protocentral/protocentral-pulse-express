@@ -35,23 +35,37 @@
 namespace
 {
 
-// Per-command CMD_DELAY values from UG6921 Tables 2/5/6. Where a step is not
-// explicitly tagged, the doc's default of 2 ms applies.
-constexpr uint16_t kDefaultCmdDelayMs       = 2;
-constexpr uint16_t kSetDateTimeDelayMs      = 5;
-constexpr uint16_t kSetCalIndexDelayMs      = 5;
-constexpr uint16_t kSetSpo2CoeffsDelayMs    = 5;
+// Per-command CMD_DELAY values from UG6921 Tables 2/5/6, biased upward to
+// match what the original 1.0.x driver shipped (uniform 45 ms + extra ad-hoc
+// delays). UG6921 §1.1 quotes a 2 ms default; in practice the hub returns
+// 0xFE (busy) on commands that proxy to the MAX30101 over its secondary I2C
+// bus when the host polls that aggressively, and the doc itself recommends
+// "Increase the CMD_DELAY" as the remedy. We err on the safe side here and
+// rely on writeImpl()/readImpl() retry-on-0xFE for residual races.
+constexpr uint16_t kDefaultCmdDelayMs       = 10;
+constexpr uint16_t kSetDateTimeDelayMs      = 10;
+constexpr uint16_t kSetCalIndexDelayMs      = 10;
+constexpr uint16_t kSetSpo2CoeffsDelayMs    = 10;
 constexpr uint16_t kCalibVectorChunkDelayMs = 30;
-constexpr uint16_t kEnableAgcDelayMs        = 20;
-constexpr uint16_t kEnableAfeDelayMs        = 40;
-constexpr uint16_t kEnableBptDelayMs        = 500;
-constexpr uint16_t kDisableAfeDelayMs       = 40;
-constexpr uint16_t kDisableBptDelayMs       = 500;
-constexpr uint16_t kDisableAgcDelayMs       = 20;
-constexpr uint16_t kPostEnableSettleMs      = 100;
-constexpr uint16_t kResetSettleMs           = 1000;
-constexpr uint16_t kEnterAppModeDelayMs     = 10;
-constexpr uint16_t kRawModeSettleMs         = 180;
+constexpr uint16_t kEnableAgcDelayMs        = 30;
+constexpr uint16_t kEnableAfeDelayMs        = 60;
+constexpr uint16_t kEnableBptDelayMs        = 600;
+constexpr uint16_t kDisableAfeDelayMs       = 60;
+constexpr uint16_t kDisableBptDelayMs       = 600;
+constexpr uint16_t kDisableAgcDelayMs       = 30;
+constexpr uint16_t kPostEnableSettleMs      = 200;
+constexpr uint16_t kResetSettleMs           = 1500;
+constexpr uint16_t kEnterAppModeDelayMs     = 20;
+constexpr uint16_t kRawModeSettleMs         = 250;
+// LED-current writes (0x40/0x03/RegAddr/Val) proxy to the MAX30101 over the
+// hub's secondary I2C bus — give them substantial headroom over the default.
+constexpr uint16_t kLedCurrentDelayMs       = 25;
+
+// Retry policy for 0xFE responses. UG6921 §1.1 says "Device is busy. Try
+// again. Increase the CMD_DELAY." We retry up to kBusyRetryMax times and
+// double the post-write delay each attempt (capped at kBusyMaxDelayMs).
+constexpr uint8_t  kBusyRetryMax            = 4;
+constexpr uint16_t kBusyMaxDelayMs          = 400;
 
 // I2C chunk size for the long calibration-vector upload. Kept at 30 to match
 // the AVR Wire BUFFER_LENGTH of 32 with two bytes of headroom; on platforms
@@ -359,12 +373,14 @@ Max32664Status Max32664::startRaw()
     delay(kRawModeSettleMs);
 
     // LED1 (red) and LED2 (IR) currents to half-scale. Must come AFTER the
-    // algorithm enable or the values are overwritten during init.
+    // algorithm enable or the values are overwritten during init. The 0x40/03
+    // family proxies to the MAX30101 over the secondary I2C bus, so it needs
+    // more headroom than the trivial-command default.
     s = writeCmd3(0x40, 0x03, kMax30101Led1RegAddr, kMax30101LedHalfScale, 0,
-                  kDefaultCmdDelayMs);
+                  kLedCurrentDelayMs);
     if (s != Max32664Status::Ok) return s;
     return writeCmd3(0x40, 0x03, kMax30101Led2RegAddr, kMax30101LedHalfScale, 0,
-                     kDefaultCmdDelayMs);
+                     kLedCurrentDelayMs);
 }
 
 Max32664Status Max32664::readRaw(Max32664RawSample *out, size_t cap, size_t *count, bool wantRed)
@@ -628,162 +644,191 @@ void Max32664::parseSample(const uint8_t *buf, Max32664Sample &s) const
 // Low-level I2C primitives
 /////////////////////////////////////////////////////////////////////////////////////////
 
+// All command transactions go through writeImpl()/readImpl(), which:
+//   - send the pre-built command frame on the I2C bus,
+//   - delay CMD_DELAY,
+//   - read the hub status byte (and any payload, for the read variant),
+//   - retry up to kBusyRetryMax times on 0xFE (busy), doubling the delay
+//     each attempt up to kBusyMaxDelayMs.
+// Per UG6921 §1.1: "0xFE: Device is busy. Try again. Increase the CMD_DELAY."
+
+Max32664Status Max32664::writeImpl(const uint8_t *frame, size_t frameLen, uint16_t cmdDelayMs)
+{
+    uint16_t actualDelay = cmdDelayMs ? cmdDelayMs : kDefaultCmdDelayMs;
+
+    for (uint8_t attempt = 0; attempt <= kBusyRetryMax; ++attempt)
+    {
+        _bus.beginTransmission(MAX32664_I2C_ADDR);
+        for (size_t i = 0; i < frameLen; ++i) _bus.write(frame[i]);
+        if (_bus.endTransmission() != 0)
+        {
+            tracef("write fam=0x%02X idx=0x%02X i2c-nack",
+                   frameLen > 0 ? frame[0] : 0, frameLen > 1 ? frame[1] : 0);
+            return Max32664Status::HostCommError;
+        }
+        delay(actualDelay);
+        if (_bus.requestFrom(uint8_t(MAX32664_I2C_ADDR), uint8_t(1)) != 1)
+            return Max32664Status::HostCommError;
+        uint8_t st = uint8_t(_bus.read());
+
+        if (st == 0x00) return Max32664Status::Ok;
+        if (st != 0xFE)
+        {
+            tracef("write fam=0x%02X idx=0x%02X status=0x%02X",
+                   frameLen > 0 ? frame[0] : 0, frameLen > 1 ? frame[1] : 0, st);
+            return Max32664Status(st);
+        }
+        if (attempt == kBusyRetryMax)
+        {
+            tracef("write fam=0x%02X idx=0x%02X 0xFE busy after %u retries",
+                   frameLen > 0 ? frame[0] : 0, frameLen > 1 ? frame[1] : 0, attempt);
+            return Max32664Status::DeviceBusy;
+        }
+        actualDelay = (actualDelay < kBusyMaxDelayMs / 2)
+                          ? uint16_t(actualDelay * 2u)
+                          : kBusyMaxDelayMs;
+    }
+    return Max32664Status::DeviceBusy;
+}
+
+Max32664Status Max32664::readImpl(const uint8_t *frame, size_t frameLen,
+                                  uint8_t *out, size_t outLen, uint16_t cmdDelayMs)
+{
+    uint16_t actualDelay = cmdDelayMs ? cmdDelayMs : kDefaultCmdDelayMs;
+
+    for (uint8_t attempt = 0; attempt <= kBusyRetryMax; ++attempt)
+    {
+        _bus.beginTransmission(MAX32664_I2C_ADDR);
+        for (size_t i = 0; i < frameLen; ++i) _bus.write(frame[i]);
+        if (_bus.endTransmission() != 0)
+        {
+            tracef("read fam=0x%02X idx=0x%02X i2c-nack",
+                   frameLen > 0 ? frame[0] : 0, frameLen > 1 ? frame[1] : 0);
+            return Max32664Status::HostCommError;
+        }
+        delay(actualDelay);
+
+        // Drain (1 + outLen) bytes across as many requestFrom() calls as the
+        // platform's Wire buffer requires. The leading byte is the status; on
+        // 0xFE we discard the rest of the chunk and retry the whole command.
+        size_t   remaining   = outLen;
+        uint8_t *cursor      = out;
+        bool     firstChunk  = true;
+        uint8_t  status      = 0;
+        bool     transient   = false;
+
+        while (remaining > 0 || firstChunk)
+        {
+            uint16_t want = uint16_t((firstChunk ? 1u : 0u) + remaining);
+            if (want > kReadChunkBytes) want = kReadChunkBytes;
+            uint8_t got = _bus.requestFrom(uint8_t(MAX32664_I2C_ADDR), uint8_t(want));
+            if (got != want) return Max32664Status::HostCommError;
+
+            if (firstChunk)
+            {
+                status = uint8_t(_bus.read());
+                --got;
+                firstChunk = false;
+                if (status != 0x00)
+                {
+                    while (got--) _bus.read();
+                    transient = (status == 0xFE);
+                    break;
+                }
+            }
+            while (got-- && remaining > 0)
+            {
+                *cursor++ = uint8_t(_bus.read());
+                --remaining;
+            }
+            if (remaining == 0) break;
+        }
+
+        if (status == 0x00) return Max32664Status::Ok;
+        if (!transient)
+        {
+            tracef("read fam=0x%02X idx=0x%02X status=0x%02X",
+                   frameLen > 0 ? frame[0] : 0, frameLen > 1 ? frame[1] : 0, status);
+            return Max32664Status(status);
+        }
+        if (attempt == kBusyRetryMax)
+        {
+            tracef("read fam=0x%02X idx=0x%02X 0xFE busy after %u retries",
+                   frameLen > 0 ? frame[0] : 0, frameLen > 1 ? frame[1] : 0, attempt);
+            return Max32664Status::DeviceBusy;
+        }
+        actualDelay = (actualDelay < kBusyMaxDelayMs / 2)
+                          ? uint16_t(actualDelay * 2u)
+                          : kBusyMaxDelayMs;
+    }
+    return Max32664Status::DeviceBusy;
+}
+
 Max32664Status Max32664::writeCmd(uint8_t fam, uint8_t idx, uint16_t cmdDelayMs)
 {
-    _bus.beginTransmission(MAX32664_I2C_ADDR);
-    _bus.write(fam);
-    _bus.write(idx);
-    if (_bus.endTransmission() != 0) return Max32664Status::HostCommError;
-    delay(cmdDelayMs ? cmdDelayMs : kDefaultCmdDelayMs);
-    if (_bus.requestFrom(uint8_t(MAX32664_I2C_ADDR), uint8_t(1)) != 1)
-        return Max32664Status::HostCommError;
-    uint8_t st = uint8_t(_bus.read());
-    return st == 0x00 ? Max32664Status::Ok : Max32664Status(st);
+    uint8_t frame[2] = {fam, idx};
+    return writeImpl(frame, 2, cmdDelayMs);
 }
 
 Max32664Status Max32664::writeCmd(uint8_t fam, uint8_t idx, uint8_t v0, uint16_t cmdDelayMs)
 {
-    _bus.beginTransmission(MAX32664_I2C_ADDR);
-    _bus.write(fam);
-    _bus.write(idx);
-    _bus.write(v0);
-    if (_bus.endTransmission() != 0) return Max32664Status::HostCommError;
-    delay(cmdDelayMs ? cmdDelayMs : kDefaultCmdDelayMs);
-    if (_bus.requestFrom(uint8_t(MAX32664_I2C_ADDR), uint8_t(1)) != 1)
-        return Max32664Status::HostCommError;
-    uint8_t st = uint8_t(_bus.read());
-    return st == 0x00 ? Max32664Status::Ok : Max32664Status(st);
+    uint8_t frame[3] = {fam, idx, v0};
+    return writeImpl(frame, 3, cmdDelayMs);
 }
 
 Max32664Status Max32664::writeCmd(uint8_t fam, uint8_t idx, uint8_t v0, uint8_t v1,
                                   uint16_t cmdDelayMs)
 {
-    _bus.beginTransmission(MAX32664_I2C_ADDR);
-    _bus.write(fam);
-    _bus.write(idx);
-    _bus.write(v0);
-    _bus.write(v1);
-    if (_bus.endTransmission() != 0) return Max32664Status::HostCommError;
-    delay(cmdDelayMs ? cmdDelayMs : kDefaultCmdDelayMs);
-    if (_bus.requestFrom(uint8_t(MAX32664_I2C_ADDR), uint8_t(1)) != 1)
-        return Max32664Status::HostCommError;
-    uint8_t st = uint8_t(_bus.read());
-    return st == 0x00 ? Max32664Status::Ok : Max32664Status(st);
+    uint8_t frame[4] = {fam, idx, v0, v1};
+    return writeImpl(frame, 4, cmdDelayMs);
 }
 
 Max32664Status Max32664::writeCmd3(uint8_t fam, uint8_t idx,
                                    uint8_t v0, uint8_t v1, uint8_t v2,
                                    uint16_t cmdDelayMs)
 {
-    _bus.beginTransmission(MAX32664_I2C_ADDR);
-    _bus.write(fam);
-    _bus.write(idx);
-    _bus.write(v0);
-    _bus.write(v1);
-    _bus.write(v2);
-    if (_bus.endTransmission() != 0) return Max32664Status::HostCommError;
-    delay(cmdDelayMs ? cmdDelayMs : kDefaultCmdDelayMs);
-    if (_bus.requestFrom(uint8_t(MAX32664_I2C_ADDR), uint8_t(1)) != 1)
-        return Max32664Status::HostCommError;
-    uint8_t st = uint8_t(_bus.read());
-    return st == 0x00 ? Max32664Status::Ok : Max32664Status(st);
+    uint8_t frame[5] = {fam, idx, v0, v1, v2};
+    return writeImpl(frame, 5, cmdDelayMs);
 }
 
 Max32664Status Max32664::writeCmd(uint8_t fam, uint8_t idx,
                                   const uint8_t *payload, size_t len,
                                   uint16_t cmdDelayMs)
 {
-    _bus.beginTransmission(MAX32664_I2C_ADDR);
-    _bus.write(fam);
-    _bus.write(idx);
-    for (size_t i = 0; i < len; ++i) _bus.write(payload[i]);
-    if (_bus.endTransmission() != 0) return Max32664Status::HostCommError;
-    delay(cmdDelayMs ? cmdDelayMs : kDefaultCmdDelayMs);
-    if (_bus.requestFrom(uint8_t(MAX32664_I2C_ADDR), uint8_t(1)) != 1)
-        return Max32664Status::HostCommError;
-    uint8_t st = uint8_t(_bus.read());
-    return st == 0x00 ? Max32664Status::Ok : Max32664Status(st);
+    // Inline assemble: max payload across callers is 12 bytes (SpO2 coeffs).
+    uint8_t frame[16];
+    if (2 + len > sizeof(frame)) return Max32664Status::BufferTooSmall;
+    frame[0] = fam;
+    frame[1] = idx;
+    for (size_t i = 0; i < len; ++i) frame[2 + i] = payload[i];
+    return writeImpl(frame, 2 + len, cmdDelayMs);
 }
 
 Max32664Status Max32664::writeCmd(uint8_t fam, uint8_t idx, uint8_t sub,
                                   const uint8_t *payload, size_t len,
                                   uint16_t cmdDelayMs)
 {
-    _bus.beginTransmission(MAX32664_I2C_ADDR);
-    _bus.write(fam);
-    _bus.write(idx);
-    _bus.write(sub);
-    for (size_t i = 0; i < len; ++i) _bus.write(payload[i]);
-    if (_bus.endTransmission() != 0) return Max32664Status::HostCommError;
-    delay(cmdDelayMs ? cmdDelayMs : kDefaultCmdDelayMs);
-    if (_bus.requestFrom(uint8_t(MAX32664_I2C_ADDR), uint8_t(1)) != 1)
-        return Max32664Status::HostCommError;
-    uint8_t st = uint8_t(_bus.read());
-    return st == 0x00 ? Max32664Status::Ok : Max32664Status(st);
+    uint8_t frame[16];
+    if (3 + len > sizeof(frame)) return Max32664Status::BufferTooSmall;
+    frame[0] = fam;
+    frame[1] = idx;
+    frame[2] = sub;
+    for (size_t i = 0; i < len; ++i) frame[3 + i] = payload[i];
+    return writeImpl(frame, 3 + len, cmdDelayMs);
 }
-
-// Internal helper for the read primitives below: pulls (1 + len) bytes off
-// the bus across as many requestFrom() calls as the platform's Wire buffer
-// requires, validates the leading status byte, and writes the payload bytes
-// to `out`.
-namespace
-{
-Max32664Status drainResponse(TwoWire &bus, uint8_t *out, size_t len)
-{
-    size_t   remaining = len;
-    uint8_t *cursor    = out;
-    bool     firstChunk = true;
-
-    while (remaining > 0 || firstChunk)
-    {
-        uint16_t want = uint16_t((firstChunk ? 1u : 0u) + remaining);
-        if (want > kReadChunkBytes) want = kReadChunkBytes;
-        uint8_t got = bus.requestFrom(uint8_t(MAX32664_I2C_ADDR), uint8_t(want));
-        if (got != want) return Max32664Status::HostCommError;
-
-        if (firstChunk)
-        {
-            uint8_t st = uint8_t(bus.read());
-            --got;
-            firstChunk = false;
-            if (st != 0x00)
-            {
-                while (got--) bus.read();
-                return Max32664Status(st);
-            }
-        }
-        while (got-- && remaining > 0)
-        {
-            *cursor++ = uint8_t(bus.read());
-            --remaining;
-        }
-        if (remaining == 0) break;
-    }
-    return Max32664Status::Ok;
-}
-}  // namespace
 
 Max32664Status Max32664::readBytes(uint8_t fam, uint8_t idx,
                                    uint8_t *out, size_t len, uint16_t cmdDelayMs)
 {
-    _bus.beginTransmission(MAX32664_I2C_ADDR);
-    _bus.write(fam);
-    _bus.write(idx);
-    if (_bus.endTransmission() != 0) return Max32664Status::HostCommError;
-    delay(cmdDelayMs ? cmdDelayMs : kDefaultCmdDelayMs);
-    return drainResponse(_bus, out, len);
+    uint8_t frame[2] = {fam, idx};
+    return readImpl(frame, 2, out, len, cmdDelayMs);
 }
 
 Max32664Status Max32664::readBytes(uint8_t fam, uint8_t idx, uint8_t sub,
                                    uint8_t *out, size_t len, uint16_t cmdDelayMs)
 {
-    _bus.beginTransmission(MAX32664_I2C_ADDR);
-    _bus.write(fam);
-    _bus.write(idx);
-    _bus.write(sub);
-    if (_bus.endTransmission() != 0) return Max32664Status::HostCommError;
-    delay(cmdDelayMs ? cmdDelayMs : kDefaultCmdDelayMs);
-    return drainResponse(_bus, out, len);
+    uint8_t frame[3] = {fam, idx, sub};
+    return readImpl(frame, 3, out, len, cmdDelayMs);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
