@@ -53,3 +53,8 @@ dkms.conf
 
 .bin
 CLAUDE.md
+
+# Maxim/ADI firmware images are non-redistributable IP — never commit them.
+*.msbl
+*.bin
+

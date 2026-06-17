@@ -1,28 +1,21 @@
-//////////////////////////////////////////////////////////////////////////////////////////
-//
-//  Arduino library for the ProtoCentral Pulse Express breakout board
-//  (MAX30102 optical sensor + MAX32664D biometric sensor hub).
-//
-//  See max32664.h for the public API and UG6921 Rev 2 (Maxim/ADI) for the
-//  underlying I2C command set.
-//
-//  Original 2020 driver: Joice Tm, Copyright (c) 2020 ProtoCentral
-//  Modernised rewrite:   Copyright (c) 2025 ProtoCentral Electronics
-//
-//  This software is licensed under the MIT License (http://opensource.org/licenses/MIT).
-//
-//  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
-//  INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
-//  PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
-//  HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-//  OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
-//  SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-//
-//  For information on how to use, visit https://github.com/Protocentral/protocentral-pulse-express
-//
-/////////////////////////////////////////////////////////////////////////////////////////
+// SPDX-License-Identifier: MIT
+// SPDX-FileCopyrightText: Copyright (c) 2025 Ashwin Whitchurch, Protocentral Electronics
+// SPDX-FileCopyrightText: Copyright (c) 2020 Maxim Integrated / Analog Devices (protocol)
 
-#include "max32664.h"
+/*
+ * ProtoCentral Pulse Express — MAX30102 + MAX32664D biometric sensor hub driver.
+ *
+ * See protocentral_pulse_express.h for the public API and UG6921 Rev 2
+ * (Maxim/ADI) for the underlying I2C command set.
+ *
+ * Original 2020 driver: Joice Tm, Copyright (c) 2020 ProtoCentral.
+ * Copyright (c) 2025 Ashwin Whitchurch, Protocentral Electronics.
+ *
+ * This software is licensed under the MIT License. See LICENSE.md for the full
+ * text. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
+ */
+
+#include "protocentral_pulse_express.h"
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -79,6 +72,14 @@ constexpr uint8_t kFifoIntrThreshold      = 0x0F;
 constexpr uint8_t kOutputModeAlgo         = 0x03;
 constexpr uint8_t kOutputModeSensorOnly   = 0x01;
 
+// FIFO/status reads just return already-buffered data, so they do not need the
+// long sensor-proxy CMD_DELAY. Keeping this short is critical: the FIFO must be
+// drained faster than the hub fills it or samples are lost. (The hub only
+// returns valid FIFO data in the first I2C read transaction after the command,
+// so samples must be read one-per-command, not batched — the throughput win is
+// purely from this shorter delay vs the 10 ms default.)
+constexpr uint16_t kFifoReadDelayMs       = 2;
+
 // LED current registers on the MAX30101: 0x0C (LED1/red) and 0x0D (LED2/IR).
 // Half-scale (0x7F) per UG6921 Table 6 §1.8/1.9.
 constexpr uint8_t kMax30101Led1RegAddr    = 0x0C;
@@ -104,12 +105,12 @@ inline void packU32BE(uint32_t v, uint8_t out[4])
 // Construction & lifecycle
 /////////////////////////////////////////////////////////////////////////////////////////
 
-Max32664::Max32664(uint8_t resetPin, uint8_t mfioPin, TwoWire &bus)
+PulseExpress::PulseExpress(uint8_t resetPin, uint8_t mfioPin, TwoWire &bus)
     : _bus(bus), _resetPin(resetPin), _mfioPin(mfioPin)
 {
 }
 
-bool Max32664::setDateTime(const Max32664DateTime &dt)
+bool PulseExpress::setDateTime(const PulseExpressDateTime &dt)
 {
     if (dt.year < 2000 || dt.year > 2099)            return false;
     if (dt.month == 0 || dt.month > 12)              return false;
@@ -119,16 +120,16 @@ bool Max32664::setDateTime(const Max32664DateTime &dt)
     return true;
 }
 
-Max32664Status Max32664::begin()
+PulseExpressStatus PulseExpress::begin()
 {
-    Max32664Status s = hardReset();
-    if (s != Max32664Status::Ok) return s;
+    PulseExpressStatus s = hardReset();
+    if (s != PulseExpressStatus::Ok) return s;
 
     s = enterAppMode();
-    if (s != Max32664Status::Ok) return s;
+    if (s != PulseExpressStatus::Ok) return s;
 
     s = readFirmwareVersion(0x03, _hubVer);
-    if (s != Max32664Status::Ok) return s;
+    if (s != PulseExpressStatus::Ok) return s;
     // Algorithm version is informational; ignore failure.
     readFirmwareVersion(0x07, _algoVer);
 
@@ -140,15 +141,23 @@ Max32664Status Max32664::begin()
            _caps.dateYYYYMMDD ? "YYYYMMDD " : "YYMMDD ",
            _caps.multiPointCalib ? "multi-point" : "single-point");
 
-    // Anything outside the 40.x line is one of the A/B/C variants or a future
-    // product — refuse rather than misdrive it.
-    if (_hubVer.major != 40) return Max32664Status::UnsupportedFirmware;
+    // Soft version check: the 40.x line is what this driver is validated
+    // against. Earlier/other firmware (A/B/C variants, older BPT builds) may
+    // not be fully supported, but we no longer hard-fail on it — begin()
+    // proceeds with legacy capability defaults and flags the condition via
+    // firmwareSupported() so callers can warn. (Was a hard UnsupportedFirmware
+    // return prior to this; that blocked earlier-firmware boards outright.)
+    _fwSupported = (_hubVer.major == 40);
+    if (!_fwSupported)
+        tracef("WARNING: hub firmware %u.%u.%u is outside the validated 40.x "
+               "line; proceeding with legacy capability defaults",
+               _hubVer.major, _hubVer.minor, _hubVer.patch);
 
     _began = true;
-    return Max32664Status::Ok;
+    return PulseExpressStatus::Ok;
 }
 
-Max32664Status Max32664::hardReset()
+PulseExpressStatus PulseExpress::hardReset()
 {
     pinMode(_mfioPin,  OUTPUT);
     pinMode(_resetPin, OUTPUT);
@@ -158,37 +167,37 @@ Max32664Status Max32664::hardReset()
     digitalWrite(_resetPin, HIGH);
     delay(kResetSettleMs);
     pinMode(_mfioPin, INPUT_PULLUP); // hub now drives MFIO as data-ready intr
-    return Max32664Status::Ok;
+    return PulseExpressStatus::Ok;
 }
 
-Max32664Status Max32664::enterAppMode()
+PulseExpressStatus PulseExpress::enterAppMode()
 {
     // 0x01/0x00/0x00 — switch operating mode to application.
-    Max32664Status s = writeCmd(0x01, 0x00, uint8_t(0x00), kEnterAppModeDelayMs);
-    if (s != Max32664Status::Ok) return s;
+    PulseExpressStatus s = writeCmd(0x01, 0x00, uint8_t(0x00), kEnterAppModeDelayMs);
+    if (s != PulseExpressStatus::Ok) return s;
 
     // 0x02/0x00 — read operating mode; expect 0x00 (application).
     uint8_t mode = 0xFF;
     s = readBytes(0x02, 0x00, &mode, 1);
-    if (s != Max32664Status::Ok) return s;
-    if (mode != 0x00) return Max32664Status::NotInAppMode;
-    return Max32664Status::Ok;
+    if (s != PulseExpressStatus::Ok) return s;
+    if (mode != 0x00) return PulseExpressStatus::NotInAppMode;
+    return PulseExpressStatus::Ok;
 }
 
-Max32664Status Max32664::readFirmwareVersion(uint8_t indexByte, Max32664Version &out)
+PulseExpressStatus PulseExpress::readFirmwareVersion(uint8_t indexByte, PulseExpressVersion &out)
 {
     uint8_t buf[3] = {0, 0, 0};
-    Max32664Status s = readBytes(0xFF, indexByte, buf, sizeof(buf));
-    if (s != Max32664Status::Ok) return s;
+    PulseExpressStatus s = readBytes(0xFF, indexByte, buf, sizeof(buf));
+    if (s != PulseExpressStatus::Ok) return s;
     out.major = buf[0];
     out.minor = buf[1];
     out.patch = buf[2];
-    return Max32664Status::Ok;
+    return PulseExpressStatus::Ok;
 }
 
-Max32664Caps Max32664::capsFor(Max32664Version v) const
+PulseExpressCaps PulseExpress::capsFor(PulseExpressVersion v) const
 {
-    Max32664Caps c;  // defaults are legacy values
+    PulseExpressCaps c;  // defaults are legacy values
     if (v.atLeast(40, 2, 2))
     {
         c.sendBpMedication = false;
@@ -208,168 +217,173 @@ Max32664Caps Max32664::capsFor(Max32664Version v) const
 // BPT calibration mode
 /////////////////////////////////////////////////////////////////////////////////////////
 
-Max32664Status Max32664::startCalibration(const Max32664CalibrationRef &ref)
+PulseExpressStatus PulseExpress::startCalibration(const PulseExpressCalibrationRef &ref)
 {
-    if (!_began)                 return Max32664Status::NotConfigured;
-    if (!_caps.multiPointCalib)  return Max32664Status::UnsupportedFirmware;
-    if (ref.calIndex > 4)        return Max32664Status::InvalidArgument;
+    if (!_began)                 return PulseExpressStatus::NotConfigured;
+    if (!_caps.multiPointCalib)  return PulseExpressStatus::UnsupportedFirmware;
+    if (ref.calIndex > 4)        return PulseExpressStatus::InvalidArgument;
 
-    Max32664Status s = sendDateTime();
-    if (s != Max32664Status::Ok) return s;
+    PulseExpressStatus s = sendDateTime();
+    if (s != PulseExpressStatus::Ok) return s;
     s = sendCalibrationRef(ref);
-    if (s != Max32664Status::Ok) return s;
+    if (s != PulseExpressStatus::Ok) return s;
 
-    s = setOutputMode(kOutputModeAlgo);            if (s != Max32664Status::Ok) return s;
-    s = setFifoIntrThreshold(kFifoIntrThreshold);  if (s != Max32664Status::Ok) return s;
-    s = enableAgc(true);                           if (s != Max32664Status::Ok) return s;
-    s = enableAfe(true);                           if (s != Max32664Status::Ok) return s;
-    s = enableBpt(0x01);                           if (s != Max32664Status::Ok) return s;
+    s = setOutputMode(kOutputModeAlgo);            if (s != PulseExpressStatus::Ok) return s;
+    s = setFifoIntrThreshold(kFifoIntrThreshold);  if (s != PulseExpressStatus::Ok) return s;
+    s = enableAgc(true);                           if (s != PulseExpressStatus::Ok) return s;
+    s = enableAfe(true);                           if (s != PulseExpressStatus::Ok) return s;
+    s = enableBpt(0x01);                           if (s != PulseExpressStatus::Ok) return s;
     delay(kPostEnableSettleMs);
-    return Max32664Status::Ok;
+    return PulseExpressStatus::Ok;
 }
 
-Max32664Status Max32664::startCalibration(const Max32664LegacyCalibrationRefs &refs)
+PulseExpressStatus PulseExpress::startCalibration(const PulseExpressLegacyCalibrationRefs &refs)
 {
-    if (!_began)                 return Max32664Status::NotConfigured;
+    if (!_began)                 return PulseExpressStatus::NotConfigured;
     // Multi-point firmware rejects the deprecated 0x50/04/01 + 0x50/04/02 path.
-    if (_caps.multiPointCalib)   return Max32664Status::UnsupportedFirmware;
+    if (_caps.multiPointCalib)   return PulseExpressStatus::UnsupportedFirmware;
 
-    Max32664Status s = sendDateTime();
-    if (s != Max32664Status::Ok) return s;
+    PulseExpressStatus s = sendDateTime();
+    if (s != PulseExpressStatus::Ok) return s;
     s = sendLegacyCalibrationRefs(refs);
-    if (s != Max32664Status::Ok) return s;
+    if (s != PulseExpressStatus::Ok) return s;
 
-    s = setOutputMode(kOutputModeAlgo);            if (s != Max32664Status::Ok) return s;
-    s = setFifoIntrThreshold(kFifoIntrThreshold);  if (s != Max32664Status::Ok) return s;
-    s = enableAgc(true);                           if (s != Max32664Status::Ok) return s;
-    s = enableAfe(true);                           if (s != Max32664Status::Ok) return s;
-    s = enableBpt(0x01);                           if (s != Max32664Status::Ok) return s;
+    s = setOutputMode(kOutputModeAlgo);            if (s != PulseExpressStatus::Ok) return s;
+    s = setFifoIntrThreshold(kFifoIntrThreshold);  if (s != PulseExpressStatus::Ok) return s;
+    s = enableAgc(true);                           if (s != PulseExpressStatus::Ok) return s;
+    s = enableAfe(true);                           if (s != PulseExpressStatus::Ok) return s;
+    s = enableBpt(0x01);                           if (s != PulseExpressStatus::Ok) return s;
     delay(kPostEnableSettleMs);
-    return Max32664Status::Ok;
+    return PulseExpressStatus::Ok;
 }
 
-Max32664Status Max32664::readSample(Max32664Sample &out)
+PulseExpressStatus PulseExpress::readSample(PulseExpressSample &out)
 {
     HubStatus st;
-    Max32664Status s = readHubStatus(st);
-    if (s != Max32664Status::Ok) return s;
-    if (!st.dataReady) return Max32664Status::NoDataAvailable;
+    PulseExpressStatus s = readHubStatus(st);
+    if (s != PulseExpressStatus::Ok) return s;
+    if (!st.dataReady) return PulseExpressStatus::NoDataAvailable;
 
     uint8_t nn = 0;
     s = readNumFifoSamples(nn);
-    if (s != Max32664Status::Ok) return s;
-    if (nn == 0) return Max32664Status::NoDataAvailable;
+    if (s != PulseExpressStatus::Ok) return s;
+    if (nn == 0) return PulseExpressStatus::NoDataAvailable;
 
     uint8_t buf[32];
-    if (_caps.sampleBytes > sizeof(buf)) return Max32664Status::BufferTooSmall;
+    if (_caps.sampleBytes > sizeof(buf)) return PulseExpressStatus::BufferTooSmall;
     s = readFifoSample(buf, _caps.sampleBytes);
-    if (s != Max32664Status::Ok) return s;
+    if (s != PulseExpressStatus::Ok) return s;
     parseSample(buf, out);
-    return Max32664Status::Ok;
+    return PulseExpressStatus::Ok;
 }
 
-Max32664Status Max32664::readCalibrationVector(uint8_t *out, size_t cap, size_t *written)
+PulseExpressStatus PulseExpress::readCalibrationVector(uint8_t *out, size_t cap, size_t *written)
 {
-    if (!_began)                       return Max32664Status::NotConfigured;
-    if (!out)                          return Max32664Status::InvalidArgument;
-    if (cap < _caps.calibVectorBytes)  return Max32664Status::BufferTooSmall;
+    if (!_began)                       return PulseExpressStatus::NotConfigured;
+    if (!out)                          return PulseExpressStatus::InvalidArgument;
+    if (cap < _caps.calibVectorBytes)  return PulseExpressStatus::BufferTooSmall;
 
     // 0x51/0x04/0x03 — read user calibration vector.
-    Max32664Status s = readBytes(0x51, 0x04, 0x03, out, _caps.calibVectorBytes);
-    if (s != Max32664Status::Ok) return s;
+    PulseExpressStatus s = readBytes(0x51, 0x04, 0x03, out, _caps.calibVectorBytes);
+    if (s != PulseExpressStatus::Ok) return s;
     if (written) *written = _caps.calibVectorBytes;
-    return Max32664Status::Ok;
+    return PulseExpressStatus::Ok;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
 // BPT estimation mode
 /////////////////////////////////////////////////////////////////////////////////////////
 
-Max32664Status Max32664::loadCalibrationVector(uint8_t calIndex, const uint8_t *vec, size_t len)
+PulseExpressStatus PulseExpress::loadCalibrationVector(uint8_t calIndex, const uint8_t *vec, size_t len)
 {
-    if (!_began)                                       return Max32664Status::NotConfigured;
-    if (!_caps.multiPointCalib)                        return Max32664Status::UnsupportedFirmware;
+    if (!_began)                                       return PulseExpressStatus::NotConfigured;
+    if (!_caps.multiPointCalib)                        return PulseExpressStatus::UnsupportedFirmware;
     if (calIndex > 4 || vec == nullptr || len != _caps.calibVectorBytes)
-                                                       return Max32664Status::InvalidArgument;
+                                                       return PulseExpressStatus::InvalidArgument;
 
-    Max32664Status s = setCalIndex(calIndex);
-    if (s != Max32664Status::Ok) return s;
+    PulseExpressStatus s = setCalIndex(calIndex);
+    if (s != PulseExpressStatus::Ok) return s;
     return sendCalibrationVectorChunked(vec, len);
 }
 
-Max32664Status Max32664::loadCalibrationVector(const uint8_t *vec, size_t len)
+PulseExpressStatus PulseExpress::loadCalibrationVector(const uint8_t *vec, size_t len)
 {
-    if (!_began)                                       return Max32664Status::NotConfigured;
-    if (_caps.multiPointCalib)                         return Max32664Status::UnsupportedFirmware;
+    if (!_began)                                       return PulseExpressStatus::NotConfigured;
+    if (_caps.multiPointCalib)                         return PulseExpressStatus::UnsupportedFirmware;
     if (vec == nullptr || len != _caps.calibVectorBytes)
-                                                       return Max32664Status::InvalidArgument;
+                                                       return PulseExpressStatus::InvalidArgument;
     return sendCalibrationVectorChunked(vec, len);
 }
 
-Max32664Status Max32664::startEstimation(const Max32664Spo2Coeffs &coeffs)
+PulseExpressStatus PulseExpress::startEstimation(const PulseExpressSpo2Coeffs &coeffs)
 {
-    if (!_began) return Max32664Status::NotConfigured;
+    if (!_began) return PulseExpressStatus::NotConfigured;
 
-    Max32664Status s = sendDateTime();
-    if (s != Max32664Status::Ok) return s;
+    PulseExpressStatus s = sendDateTime();
+    if (s != PulseExpressStatus::Ok) return s;
     s = sendSpo2Coeffs(coeffs);
-    if (s != Max32664Status::Ok) return s;
+    if (s != PulseExpressStatus::Ok) return s;
 
-    s = setOutputMode(kOutputModeAlgo);            if (s != Max32664Status::Ok) return s;
-    s = setFifoIntrThreshold(kFifoIntrThreshold);  if (s != Max32664Status::Ok) return s;
-    s = enableAgc(true);                           if (s != Max32664Status::Ok) return s;
-    s = enableAfe(true);                           if (s != Max32664Status::Ok) return s;
-    s = enableBpt(0x02);                           if (s != Max32664Status::Ok) return s;
+    s = setOutputMode(kOutputModeAlgo);            if (s != PulseExpressStatus::Ok) return s;
+    s = setFifoIntrThreshold(kFifoIntrThreshold);  if (s != PulseExpressStatus::Ok) return s;
+    s = enableAgc(true);                           if (s != PulseExpressStatus::Ok) return s;
+    s = enableAfe(true);                           if (s != PulseExpressStatus::Ok) return s;
+    s = enableBpt(0x02);                           if (s != PulseExpressStatus::Ok) return s;
     delay(kPostEnableSettleMs);
-    return Max32664Status::Ok;
+    return PulseExpressStatus::Ok;
 }
 
-Max32664Status Max32664::readSamples(Max32664Sample *out, size_t cap, size_t *count)
+PulseExpressStatus PulseExpress::readSamples(PulseExpressSample *out, size_t cap, size_t *count)
 {
     if (count) *count = 0;
-    if (!_began || out == nullptr) return Max32664Status::InvalidArgument;
+    if (!_began || out == nullptr) return PulseExpressStatus::InvalidArgument;
 
     HubStatus st;
-    Max32664Status s = readHubStatus(st);
-    if (s != Max32664Status::Ok) return s;
-    if (!st.dataReady) return Max32664Status::Ok;  // empty FIFO is not an error
+    PulseExpressStatus s = readHubStatus(st);
+    if (s != PulseExpressStatus::Ok) return s;
+    if (!st.dataReady) return PulseExpressStatus::Ok;  // empty FIFO is not an error
 
     uint8_t nn = 0;
     s = readNumFifoSamples(nn);
-    if (s != Max32664Status::Ok) return s;
-    if (nn == 0) return Max32664Status::Ok;
+    if (s != PulseExpressStatus::Ok) return s;
+    if (nn == 0) return PulseExpressStatus::Ok;
     if (nn > cap) nn = uint8_t(cap);
 
+    // One sample per 0x12 0x01 command: each read is a single I2C transaction
+    // (<= 30 bytes), which the hub returns reliably. The throughput win over the
+    // original comes from the short kFifoReadDelayMs (see readFifoSample), NOT
+    // from batching — the hub only returns valid FIFO data in the first read
+    // transaction after the command, so a multi-chunk burst read corrupts.
     uint8_t buf[32];
-    if (_caps.sampleBytes > sizeof(buf)) return Max32664Status::BufferTooSmall;
+    if (_caps.sampleBytes > sizeof(buf)) return PulseExpressStatus::BufferTooSmall;
 
     for (uint8_t i = 0; i < nn; ++i)
     {
         s = readFifoSample(buf, _caps.sampleBytes);
-        if (s != Max32664Status::Ok) return s;
+        if (s != PulseExpressStatus::Ok) return s;
         parseSample(buf, out[i]);
     }
     if (count) *count = nn;
-    return Max32664Status::Ok;
+    return PulseExpressStatus::Ok;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
 // Raw PPG mode
 /////////////////////////////////////////////////////////////////////////////////////////
 
-Max32664Status Max32664::startRaw()
+PulseExpressStatus PulseExpress::startRaw()
 {
-    if (!_began) return Max32664Status::NotConfigured;
+    if (!_began) return PulseExpressStatus::NotConfigured;
 
     // Per UG6921 Table 6: output mode = sensor-only, then enable AFE, then
     // enable BPT in estimation mode (the algorithm runs but does not affect
     // PPG), then disable AGC so LED currents stay where the user puts them.
-    Max32664Status s = setOutputMode(kOutputModeSensorOnly);
-    if (s != Max32664Status::Ok) return s;
-    s = setFifoIntrThreshold(kFifoIntrThreshold);  if (s != Max32664Status::Ok) return s;
-    s = enableAfe(true);                           if (s != Max32664Status::Ok) return s;
-    s = enableBpt(0x02);                           if (s != Max32664Status::Ok) return s;
-    s = enableAgc(false);                          if (s != Max32664Status::Ok) return s;
+    PulseExpressStatus s = setOutputMode(kOutputModeSensorOnly);
+    if (s != PulseExpressStatus::Ok) return s;
+    s = setFifoIntrThreshold(kFifoIntrThreshold);  if (s != PulseExpressStatus::Ok) return s;
+    s = enableAfe(true);                           if (s != PulseExpressStatus::Ok) return s;
+    s = enableBpt(0x02);                           if (s != PulseExpressStatus::Ok) return s;
+    s = enableAgc(false);                          if (s != PulseExpressStatus::Ok) return s;
     delay(kRawModeSettleMs);
 
     // LED1 (red) and LED2 (IR) currents to half-scale. Must come AFTER the
@@ -378,53 +392,55 @@ Max32664Status Max32664::startRaw()
     // more headroom than the trivial-command default.
     s = writeCmd3(0x40, 0x03, kMax30101Led1RegAddr, kMax30101LedHalfScale, 0,
                   kLedCurrentDelayMs);
-    if (s != Max32664Status::Ok) return s;
+    if (s != PulseExpressStatus::Ok) return s;
     return writeCmd3(0x40, 0x03, kMax30101Led2RegAddr, kMax30101LedHalfScale, 0,
                      kLedCurrentDelayMs);
 }
 
-Max32664Status Max32664::readRaw(Max32664RawSample *out, size_t cap, size_t *count, bool wantRed)
+PulseExpressStatus PulseExpress::readRaw(PulseExpressRawSample *out, size_t cap, size_t *count, bool wantRed)
 {
     if (count) *count = 0;
-    if (!_began || out == nullptr) return Max32664Status::InvalidArgument;
+    if (!_began || out == nullptr) return PulseExpressStatus::InvalidArgument;
 
     HubStatus st;
-    Max32664Status s = readHubStatus(st);
-    if (s != Max32664Status::Ok) return s;
-    if (!st.dataReady) return Max32664Status::Ok;
+    PulseExpressStatus s = readHubStatus(st);
+    if (s != PulseExpressStatus::Ok) return s;
+    if (!st.dataReady) return PulseExpressStatus::Ok;
 
     uint8_t nn = 0;
     s = readNumFifoSamples(nn);
-    if (s != Max32664Status::Ok) return s;
-    if (nn == 0) return Max32664Status::Ok;
+    if (s != PulseExpressStatus::Ok) return s;
+    if (nn == 0) return PulseExpressStatus::Ok;
     if (nn > cap) nn = uint8_t(cap);
 
     // Per UG6921 Table 4 a sensor-only sample is 12 bytes (4 LEDs * 3 bytes).
     // Only LED1 (IR, bytes 0-2) and LED2 (Red, bytes 3-5) are wired up on the
-    // MAX30101 in this product; LED3/4 are reported as zero.
+    // MAX30101 in this product; LED3/4 are reported as zero. One sample per
+    // 0x12 0x01 command (single I2C transaction); the speed-up over the original
+    // is the short kFifoReadDelayMs, not batching.
     uint8_t buf[16];
     for (uint8_t i = 0; i < nn; ++i)
     {
         s = readFifoSample(buf, 12);
-        if (s != Max32664Status::Ok) return s;
+        if (s != PulseExpressStatus::Ok) return s;
         out[i].ir  = (uint32_t(buf[0]) << 16) | (uint32_t(buf[1]) << 8) | uint32_t(buf[2]);
         out[i].red = wantRed
                        ? ((uint32_t(buf[3]) << 16) | (uint32_t(buf[4]) << 8) | uint32_t(buf[5]))
                        : 0u;
     }
     if (count) *count = nn;
-    return Max32664Status::Ok;
+    return PulseExpressStatus::Ok;
 }
 
-Max32664Status Max32664::stop()
+PulseExpressStatus PulseExpress::stop()
 {
-    if (!_began) return Max32664Status::Ok;
+    if (!_began) return PulseExpressStatus::Ok;
     // Disable order from UG6921 Tables 5 & 6 §3.
-    Max32664Status s1 = enableAfe(false);
-    Max32664Status s2 = enableBpt(0x00);
-    Max32664Status s3 = enableAgc(false);
-    if (s1 != Max32664Status::Ok) return s1;
-    if (s2 != Max32664Status::Ok) return s2;
+    PulseExpressStatus s1 = enableAfe(false);
+    PulseExpressStatus s2 = enableBpt(0x00);
+    PulseExpressStatus s3 = enableAgc(false);
+    if (s1 != PulseExpressStatus::Ok) return s1;
+    if (s2 != PulseExpressStatus::Ok) return s2;
     return s3;
 }
 
@@ -432,7 +448,7 @@ Max32664Status Max32664::stop()
 // Sub-procedures (private)
 /////////////////////////////////////////////////////////////////////////////////////////
 
-Max32664Status Max32664::sendDateTime()
+PulseExpressStatus PulseExpress::sendDateTime()
 {
     // Two 32-bit values: date then time. UG6921 Table 3 0x04 describes the
     // wire format as little-endian, and the worked example for the default
@@ -472,7 +488,7 @@ Max32664Status Max32664::sendDateTime()
     return writeCmd(0x50, 0x04, 0x04, payload, sizeof(payload), kSetDateTimeDelayMs);
 }
 
-Max32664Status Max32664::sendSpo2Coeffs(const Max32664Spo2Coeffs &c)
+PulseExpressStatus PulseExpress::sendSpo2Coeffs(const PulseExpressSpo2Coeffs &c)
 {
     // Each coefficient is round(10^5 * value) packed as a 32-bit signed
     // integer in MSB-first byte order (per the UG6921 worked example for A,
@@ -494,7 +510,7 @@ Max32664Status Max32664::sendSpo2Coeffs(const Max32664Spo2Coeffs &c)
     return writeCmd(0x50, 0x04, 0x06, payload, sizeof(payload), kSetSpo2CoeffsDelayMs);
 }
 
-Max32664Status Max32664::sendCalibrationRef(const Max32664CalibrationRef &r)
+PulseExpressStatus PulseExpress::sendCalibrationRef(const PulseExpressCalibrationRef &r)
 {
     // 0x50/0x04/0x07 — set cal_index + reference systolic + reference
     // diastolic (introduced in 40.5.0+).
@@ -502,26 +518,26 @@ Max32664Status Max32664::sendCalibrationRef(const Max32664CalibrationRef &r)
     return writeCmd(0x50, 0x04, 0x07, payload, sizeof(payload), kSetCalIndexDelayMs);
 }
 
-Max32664Status Max32664::sendLegacyCalibrationRefs(const Max32664LegacyCalibrationRefs &r)
+PulseExpressStatus PulseExpress::sendLegacyCalibrationRefs(const PulseExpressLegacyCalibrationRefs &r)
 {
     // 0x50/0x04/0x01 — three systolic refs.
-    Max32664Status s = writeCmd(0x50, 0x04, 0x01, r.systolic, 3, kDefaultCmdDelayMs);
-    if (s != Max32664Status::Ok) return s;
+    PulseExpressStatus s = writeCmd(0x50, 0x04, 0x01, r.systolic, 3, kDefaultCmdDelayMs);
+    if (s != PulseExpressStatus::Ok) return s;
     // 0x50/0x04/0x02 — three diastolic refs.
     return writeCmd(0x50, 0x04, 0x02, r.diastolic, 3, kDefaultCmdDelayMs);
 }
 
-Max32664Status Max32664::setCalIndex(uint8_t idx)
+PulseExpressStatus PulseExpress::setCalIndex(uint8_t idx)
 {
-    if (idx > 4) return Max32664Status::InvalidArgument;
+    if (idx > 4) return PulseExpressStatus::InvalidArgument;
     // 0x50/0x04/0x08 — select cal_index for subsequent vector load (40.5.0+).
     uint8_t payload[1] = {idx};
     return writeCmd(0x50, 0x04, 0x08, payload, 1, kSetCalIndexDelayMs);
 }
 
-Max32664Status Max32664::sendCalibrationVectorChunked(const uint8_t *vec, size_t len)
+PulseExpressStatus PulseExpress::sendCalibrationVectorChunked(const uint8_t *vec, size_t len)
 {
-    if (vec == nullptr || len == 0) return Max32664Status::InvalidArgument;
+    if (vec == nullptr || len == 0) return PulseExpressStatus::InvalidArgument;
 
     // The cal-vector upload is 0x50/0x04/0x03 followed by `len` raw bytes.
     // On most Arduino platforms the I2C buffer is too small to hold the whole
@@ -550,44 +566,44 @@ Max32664Status Max32664::sendCalibrationVectorChunked(const uint8_t *vec, size_t
             _bus.write(vec[cursor++]);
             ++inFrame;
         }
-        if (_bus.endTransmission() != 0) return Max32664Status::HostCommError;
+        if (_bus.endTransmission() != 0) return PulseExpressStatus::HostCommError;
         delay(kCalibVectorChunkDelayMs);
     }
 
     // Final status read confirms the upload was accepted by the hub.
     if (_bus.requestFrom(uint8_t(MAX32664_I2C_ADDR), uint8_t(1)) != 1)
-        return Max32664Status::HostCommError;
+        return PulseExpressStatus::HostCommError;
     uint8_t status = uint8_t(_bus.read());
-    if (status != 0x00) return Max32664Status(status);
-    return Max32664Status::Ok;
+    if (status != 0x00) return PulseExpressStatus(status);
+    return PulseExpressStatus::Ok;
 }
 
-Max32664Status Max32664::setOutputMode(uint8_t mode)
+PulseExpressStatus PulseExpress::setOutputMode(uint8_t mode)
 {
     return writeCmd(0x10, 0x00, mode, kDefaultCmdDelayMs);
 }
 
-Max32664Status Max32664::setFifoIntrThreshold(uint8_t th)
+PulseExpressStatus PulseExpress::setFifoIntrThreshold(uint8_t th)
 {
     return writeCmd(0x10, 0x01, th, kDefaultCmdDelayMs);
 }
 
-Max32664Status Max32664::enableAfe(bool on)
+PulseExpressStatus PulseExpress::enableAfe(bool on)
 {
     return writeCmd(0x44, 0x03, uint8_t(on ? 0x01 : 0x00),
                     on ? kEnableAfeDelayMs : kDisableAfeDelayMs);
 }
 
-Max32664Status Max32664::enableAgc(bool on)
+PulseExpressStatus PulseExpress::enableAgc(bool on)
 {
     return writeCmd(0x52, 0x00, uint8_t(on ? 0x01 : 0x00),
                     on ? kEnableAgcDelayMs : kDisableAgcDelayMs);
 }
 
-Max32664Status Max32664::enableBpt(uint8_t mode)
+PulseExpressStatus PulseExpress::enableBpt(uint8_t mode)
 {
     // mode: 0=disabled, 1=calibration, 2=estimation.
-    if (mode > 2) return Max32664Status::InvalidArgument;
+    if (mode > 2) return PulseExpressStatus::InvalidArgument;
     return writeCmd(0x52, 0x04, mode,
                     mode == 0 ? kDisableBptDelayMs : kEnableBptDelayMs);
 }
@@ -596,34 +612,34 @@ Max32664Status Max32664::enableBpt(uint8_t mode)
 // FIFO / sample I/O
 /////////////////////////////////////////////////////////////////////////////////////////
 
-Max32664Status Max32664::readHubStatus(HubStatus &out)
+PulseExpressStatus PulseExpress::readHubStatus(HubStatus &out)
 {
     uint8_t bits = 0;
-    Max32664Status s = readBytes(0x00, 0x00, &bits, 1);
-    if (s != Max32664Status::Ok) return s;
+    PulseExpressStatus s = readBytes(0x00, 0x00, &bits, 1, kFifoReadDelayMs);
+    if (s != PulseExpressStatus::Ok) return s;
     out.sensorCommError = (bits & MAX32664_STATUS_SENSOR_COMM)  != 0;
     out.dataReady       = (bits & MAX32664_STATUS_DATA_READY)   != 0;
     out.fifoOutOverflow = (bits & MAX32664_STATUS_FIFO_OUT_OVR) != 0;
     out.fifoInOverflow  = (bits & MAX32664_STATUS_FIFO_IN_OVR)  != 0;
     out.deviceBusy      = (bits & MAX32664_STATUS_DEVICE_BUSY)  != 0;
-    return Max32664Status::Ok;
+    return PulseExpressStatus::Ok;
 }
 
-Max32664Status Max32664::readNumFifoSamples(uint8_t &nn)
+PulseExpressStatus PulseExpress::readNumFifoSamples(uint8_t &nn)
 {
-    return readBytes(0x12, 0x00, &nn, 1);
+    return readBytes(0x12, 0x00, &nn, 1, kFifoReadDelayMs);
 }
 
-Max32664Status Max32664::readFifoSample(uint8_t *out, size_t len)
+PulseExpressStatus PulseExpress::readFifoSample(uint8_t *out, size_t len)
 {
-    return readBytes(0x12, 0x01, out, len);
+    return readBytes(0x12, 0x01, out, len, kFifoReadDelayMs);
 }
 
-void Max32664::parseSample(const uint8_t *buf, Max32664Sample &s) const
+void PulseExpress::parseSample(const uint8_t *buf, PulseExpressSample &s) const
 {
     // Layout per UG6921 Table 4. Bytes 0..11 are MAX30101 PPG counters in
     // algorithm mode; byte 12 onward is the BPT block.
-    s.bpStatus     = Max32664BpStatus(buf[12]);
+    s.bpStatus     = PulseExpressBpStatus(buf[12]);
     s.progress     = buf[13];
     s.heartRate10x = pack16BE(&buf[14]);
     s.systolic     = buf[16];
@@ -652,7 +668,7 @@ void Max32664::parseSample(const uint8_t *buf, Max32664Sample &s) const
 //     each attempt up to kBusyMaxDelayMs.
 // Per UG6921 §1.1: "0xFE: Device is busy. Try again. Increase the CMD_DELAY."
 
-Max32664Status Max32664::writeImpl(const uint8_t *frame, size_t frameLen, uint16_t cmdDelayMs)
+PulseExpressStatus PulseExpress::writeImpl(const uint8_t *frame, size_t frameLen, uint16_t cmdDelayMs)
 {
     uint16_t actualDelay = cmdDelayMs ? cmdDelayMs : kDefaultCmdDelayMs;
 
@@ -664,34 +680,34 @@ Max32664Status Max32664::writeImpl(const uint8_t *frame, size_t frameLen, uint16
         {
             tracef("write fam=0x%02X idx=0x%02X i2c-nack",
                    frameLen > 0 ? frame[0] : 0, frameLen > 1 ? frame[1] : 0);
-            return Max32664Status::HostCommError;
+            return PulseExpressStatus::HostCommError;
         }
         delay(actualDelay);
         if (_bus.requestFrom(uint8_t(MAX32664_I2C_ADDR), uint8_t(1)) != 1)
-            return Max32664Status::HostCommError;
+            return PulseExpressStatus::HostCommError;
         uint8_t st = uint8_t(_bus.read());
 
-        if (st == 0x00) return Max32664Status::Ok;
+        if (st == 0x00) return PulseExpressStatus::Ok;
         if (st != 0xFE)
         {
             tracef("write fam=0x%02X idx=0x%02X status=0x%02X",
                    frameLen > 0 ? frame[0] : 0, frameLen > 1 ? frame[1] : 0, st);
-            return Max32664Status(st);
+            return PulseExpressStatus(st);
         }
         if (attempt == kBusyRetryMax)
         {
             tracef("write fam=0x%02X idx=0x%02X 0xFE busy after %u retries",
                    frameLen > 0 ? frame[0] : 0, frameLen > 1 ? frame[1] : 0, attempt);
-            return Max32664Status::DeviceBusy;
+            return PulseExpressStatus::DeviceBusy;
         }
         actualDelay = (actualDelay < kBusyMaxDelayMs / 2)
                           ? uint16_t(actualDelay * 2u)
                           : kBusyMaxDelayMs;
     }
-    return Max32664Status::DeviceBusy;
+    return PulseExpressStatus::DeviceBusy;
 }
 
-Max32664Status Max32664::readImpl(const uint8_t *frame, size_t frameLen,
+PulseExpressStatus PulseExpress::readImpl(const uint8_t *frame, size_t frameLen,
                                   uint8_t *out, size_t outLen, uint16_t cmdDelayMs)
 {
     uint16_t actualDelay = cmdDelayMs ? cmdDelayMs : kDefaultCmdDelayMs;
@@ -704,7 +720,7 @@ Max32664Status Max32664::readImpl(const uint8_t *frame, size_t frameLen,
         {
             tracef("read fam=0x%02X idx=0x%02X i2c-nack",
                    frameLen > 0 ? frame[0] : 0, frameLen > 1 ? frame[1] : 0);
-            return Max32664Status::HostCommError;
+            return PulseExpressStatus::HostCommError;
         }
         delay(actualDelay);
 
@@ -722,7 +738,7 @@ Max32664Status Max32664::readImpl(const uint8_t *frame, size_t frameLen,
             uint16_t want = uint16_t((firstChunk ? 1u : 0u) + remaining);
             if (want > kReadChunkBytes) want = kReadChunkBytes;
             uint8_t got = _bus.requestFrom(uint8_t(MAX32664_I2C_ADDR), uint8_t(want));
-            if (got != want) return Max32664Status::HostCommError;
+            if (got != want) return PulseExpressStatus::HostCommError;
 
             if (firstChunk)
             {
@@ -744,46 +760,46 @@ Max32664Status Max32664::readImpl(const uint8_t *frame, size_t frameLen,
             if (remaining == 0) break;
         }
 
-        if (status == 0x00) return Max32664Status::Ok;
+        if (status == 0x00) return PulseExpressStatus::Ok;
         if (!transient)
         {
             tracef("read fam=0x%02X idx=0x%02X status=0x%02X",
                    frameLen > 0 ? frame[0] : 0, frameLen > 1 ? frame[1] : 0, status);
-            return Max32664Status(status);
+            return PulseExpressStatus(status);
         }
         if (attempt == kBusyRetryMax)
         {
             tracef("read fam=0x%02X idx=0x%02X 0xFE busy after %u retries",
                    frameLen > 0 ? frame[0] : 0, frameLen > 1 ? frame[1] : 0, attempt);
-            return Max32664Status::DeviceBusy;
+            return PulseExpressStatus::DeviceBusy;
         }
         actualDelay = (actualDelay < kBusyMaxDelayMs / 2)
                           ? uint16_t(actualDelay * 2u)
                           : kBusyMaxDelayMs;
     }
-    return Max32664Status::DeviceBusy;
+    return PulseExpressStatus::DeviceBusy;
 }
 
-Max32664Status Max32664::writeCmd(uint8_t fam, uint8_t idx, uint16_t cmdDelayMs)
+PulseExpressStatus PulseExpress::writeCmd(uint8_t fam, uint8_t idx, uint16_t cmdDelayMs)
 {
     uint8_t frame[2] = {fam, idx};
     return writeImpl(frame, 2, cmdDelayMs);
 }
 
-Max32664Status Max32664::writeCmd(uint8_t fam, uint8_t idx, uint8_t v0, uint16_t cmdDelayMs)
+PulseExpressStatus PulseExpress::writeCmd(uint8_t fam, uint8_t idx, uint8_t v0, uint16_t cmdDelayMs)
 {
     uint8_t frame[3] = {fam, idx, v0};
     return writeImpl(frame, 3, cmdDelayMs);
 }
 
-Max32664Status Max32664::writeCmd(uint8_t fam, uint8_t idx, uint8_t v0, uint8_t v1,
+PulseExpressStatus PulseExpress::writeCmd(uint8_t fam, uint8_t idx, uint8_t v0, uint8_t v1,
                                   uint16_t cmdDelayMs)
 {
     uint8_t frame[4] = {fam, idx, v0, v1};
     return writeImpl(frame, 4, cmdDelayMs);
 }
 
-Max32664Status Max32664::writeCmd3(uint8_t fam, uint8_t idx,
+PulseExpressStatus PulseExpress::writeCmd3(uint8_t fam, uint8_t idx,
                                    uint8_t v0, uint8_t v1, uint8_t v2,
                                    uint16_t cmdDelayMs)
 {
@@ -791,25 +807,25 @@ Max32664Status Max32664::writeCmd3(uint8_t fam, uint8_t idx,
     return writeImpl(frame, 5, cmdDelayMs);
 }
 
-Max32664Status Max32664::writeCmd(uint8_t fam, uint8_t idx,
+PulseExpressStatus PulseExpress::writeCmd(uint8_t fam, uint8_t idx,
                                   const uint8_t *payload, size_t len,
                                   uint16_t cmdDelayMs)
 {
     // Inline assemble: max payload across callers is 12 bytes (SpO2 coeffs).
     uint8_t frame[16];
-    if (2 + len > sizeof(frame)) return Max32664Status::BufferTooSmall;
+    if (2 + len > sizeof(frame)) return PulseExpressStatus::BufferTooSmall;
     frame[0] = fam;
     frame[1] = idx;
     for (size_t i = 0; i < len; ++i) frame[2 + i] = payload[i];
     return writeImpl(frame, 2 + len, cmdDelayMs);
 }
 
-Max32664Status Max32664::writeCmd(uint8_t fam, uint8_t idx, uint8_t sub,
+PulseExpressStatus PulseExpress::writeCmd(uint8_t fam, uint8_t idx, uint8_t sub,
                                   const uint8_t *payload, size_t len,
                                   uint16_t cmdDelayMs)
 {
     uint8_t frame[16];
-    if (3 + len > sizeof(frame)) return Max32664Status::BufferTooSmall;
+    if (3 + len > sizeof(frame)) return PulseExpressStatus::BufferTooSmall;
     frame[0] = fam;
     frame[1] = idx;
     frame[2] = sub;
@@ -817,14 +833,14 @@ Max32664Status Max32664::writeCmd(uint8_t fam, uint8_t idx, uint8_t sub,
     return writeImpl(frame, 3 + len, cmdDelayMs);
 }
 
-Max32664Status Max32664::readBytes(uint8_t fam, uint8_t idx,
+PulseExpressStatus PulseExpress::readBytes(uint8_t fam, uint8_t idx,
                                    uint8_t *out, size_t len, uint16_t cmdDelayMs)
 {
     uint8_t frame[2] = {fam, idx};
     return readImpl(frame, 2, out, len, cmdDelayMs);
 }
 
-Max32664Status Max32664::readBytes(uint8_t fam, uint8_t idx, uint8_t sub,
+PulseExpressStatus PulseExpress::readBytes(uint8_t fam, uint8_t idx, uint8_t sub,
                                    uint8_t *out, size_t len, uint16_t cmdDelayMs)
 {
     uint8_t frame[3] = {fam, idx, sub};
@@ -835,12 +851,12 @@ Max32664Status Max32664::readBytes(uint8_t fam, uint8_t idx, uint8_t sub,
 // Tracing
 /////////////////////////////////////////////////////////////////////////////////////////
 
-void Max32664::trace(const char *msg) const
+void PulseExpress::trace(const char *msg) const
 {
     if (_dbg) _dbg->println(msg);
 }
 
-void Max32664::tracef(const char *fmt, ...) const
+void PulseExpress::tracef(const char *fmt, ...) const
 {
     if (!_dbg) return;
     char buf[128];
