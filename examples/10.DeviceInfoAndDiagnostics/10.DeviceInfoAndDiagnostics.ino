@@ -34,6 +34,10 @@ void setup()
     while (!Serial && millis() < 3000) {}
     Wire.begin();
 
+    // Trace every hub command (family/index/status) — this is the diagnostics
+    // sketch, so we want the failing command named, not just a return code.
+    hub.setDebug(&Serial);
+
     PulseExpressStatus s = hub.begin();
     if (s != PulseExpressStatus::Ok)
     {
@@ -43,7 +47,19 @@ void setup()
 
     Serial.println("=== ProtoCentral Pulse Express — device info ===");
     printVersion("Hub firmware:       ", hub.version());
-    printVersion("Algorithm firmware: ", hub.algoVersion());
+    Serial.print("Algorithm firmware: ");
+    if (hub.algoVersionValid())
+    {
+        PulseExpressVersion a = hub.algoVersion();
+        Serial.print(a.major); Serial.print('.');
+        Serial.print(a.minor); Serial.print('.');
+        Serial.println(a.patch);
+    }
+    else
+    {
+        // Not every 40.x build answers 0xFF/0x07 — this is normal, not a fault.
+        Serial.println("unavailable (hub did not answer 0xFF/0x07)");
+    }
     Serial.print("Firmware supported: "); Serial.println(hub.firmwareSupported() ? "yes" : "no (legacy defaults)");
     Serial.print("MFIO pin:           "); Serial.println(hub.mfioPin());
 
@@ -55,9 +71,55 @@ void setup()
     Serial.print("Multi-point calib:  "); Serial.println(c.multiPointCalib ? "yes (40.5.0+)" : "no (legacy)");
     Serial.println("=================================================");
 
+    // UG6921 Table 1 prescribes this whenever a command returns 0xFF: read the
+    // optical AFE's PART_ID (0x15 for MAX30101/MAX30102) to prove the hub can
+    // reach the sensor over its secondary I2C bus.
+    uint8_t partId = 0;
+    PulseExpressStatus p = hub.readAfePartId(partId);
+    Serial.print("AFE PART_ID:        ");
+    if (p == PulseExpressStatus::Ok)
+    {
+        Serial.print("0x"); Serial.print(partId, HEX);
+        Serial.println(partId == 0x15 ? " (MAX30101/2 OK)" : " (unexpected!)");
+    }
+    else
+    {
+        Serial.print("read failed 0x"); Serial.println(uint8_t(p), HEX);
+
+        // The hub could not reach the AFE at the documented sensor index.
+        // Sweep the other indices: if the part answers somewhere else, this
+        // firmware image maps it differently and the fix is a driver change.
+        // If nothing answers anywhere, the hub cannot see the sensor at all —
+        // reflash the hub or suspect the board.
+        Serial.println("Scanning sensor indices for a responding AFE...");
+        bool found = false;
+        for (uint8_t idx = 0; idx <= 0x07; ++idx)
+        {
+            uint8_t id = 0;
+            if (hub.readAfePartId(id, idx) == PulseExpressStatus::Ok)
+            {
+                found = true;
+                Serial.print("  index 0x"); Serial.print(idx, HEX);
+                Serial.print(" answered PART_ID 0x"); Serial.println(id, HEX);
+            }
+        }
+        if (!found)
+            Serial.println("  no sensor index responded — hub cannot see the AFE.");
+    }
+    Serial.println("=================================================");
+
     s = hub.startRaw();
     if (s != PulseExpressStatus::Ok)
-        Serial.println("startRaw() failed; status polling may stay idle.");
+    {
+        Serial.print("startRaw() failed: 0x");
+        Serial.print(uint8_t(s), HEX);
+        Serial.println(" — status polling may stay idle. See the trace above "
+                       "for the command that failed.");
+    }
+    else
+    {
+        Serial.println("Raw acquisition started.");
+    }
     delay(500);
 }
 
@@ -70,14 +132,29 @@ void loop()
         Serial.print(" fifoOutOvr=");    Serial.print(st.fifoOutOverflow);
         Serial.print(" fifoInOvr=");     Serial.print(st.fifoInOverflow);
         Serial.print(" sensorCommErr="); Serial.print(st.sensorCommError);
-        Serial.print(" busy=");          Serial.println(st.deviceBusy);
+        Serial.print(" busy=");          Serial.print(st.deviceBusy);
     }
 
-    // Drain the FIFO so overflow flags reflect current state rather than a
-    // backlog we never read.
+    // Drain the FIFO *completely* each pass. readRaw() returns at most `cap`
+    // samples per call, so a single call plus a long delay lets the backlog
+    // grow until the hub's output FIFO overflows — after which the hub rejects
+    // FIFO reads with 0xFF until it is emptied (UG6921 Table 1). Loop until a
+    // pass comes back empty.
     PulseExpressRawSample buf[16];
-    size_t n = 0;
-    hub.readRaw(buf, 16, &n, /*wantRed=*/false);
+    size_t total = 0, n = 0;
+    uint32_t firstIr = 0, firstRed = 0;
+    do
+    {
+        n = 0;
+        if (hub.readRaw(buf, 16, &n, /*wantRed=*/true) != PulseExpressStatus::Ok) break;
+        if (total == 0 && n > 0) { firstIr = buf[0].ir; firstRed = buf[0].red; }
+        total += n;
+    } while (n == 16);
 
-    delay(500);
+    Serial.print(" samples=");            Serial.print(total);
+    if (total > 0) { Serial.print(" ir="); Serial.print(firstIr);
+                     Serial.print(" red="); Serial.print(firstRed); }
+    Serial.println();
+
+    delay(100);
 }

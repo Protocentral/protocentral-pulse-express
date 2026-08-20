@@ -48,7 +48,24 @@ constexpr uint16_t kDisableBptDelayMs       = 600;
 constexpr uint16_t kDisableAgcDelayMs       = 30;
 constexpr uint16_t kPostEnableSettleMs      = 200;
 constexpr uint16_t kResetSettleMs           = 1500;
+// Setting the operating mode (0x01/0x00/<mode>) restarts the hub application;
+// it needs the same settling time as a hard reset before the sensor stack is
+// ready to talk to the AFE. UG6921's application-mode flows never write this
+// byte at all — the hub boots into application mode on its own when MFIO is
+// high at reset — so we only send it when the hub reports otherwise.
 constexpr uint16_t kEnterAppModeDelayMs     = 20;
+constexpr uint16_t kModeSwitchSettleMs      = 1400;
+// UG6921 Table 1: a 0xFF ("unknown error") from a sensor command is diagnosed
+// by re-reading the AFE PART_ID. The hub can also answer 0xFF while its sensor
+// stack is still coming up after a reset, so the AFE enable gets a few spaced
+// retries before we give up.
+constexpr uint8_t  kAfeEnableRetries        = 3;
+constexpr uint16_t kAfeEnableRetryDelayMs   = 250;
+// Upper bound on samples discarded by flushFifo() — the hub's output FIFO holds
+// far fewer than this, so hitting it means something else is wrong.
+constexpr uint16_t kFifoFlushMaxSamples     = 256;
+constexpr uint8_t  kMax30101PartIdReg       = 0xFF;
+constexpr uint8_t  kMax30101PartIdExpected  = 0x15;
 constexpr uint16_t kRawModeSettleMs         = 250;
 // LED-current writes (0x40/0x03/RegAddr/Val) proxy to the MAX30101 over the
 // hub's secondary I2C bus — give them substantial headroom over the default.
@@ -130,8 +147,11 @@ PulseExpressStatus PulseExpress::begin()
 
     s = readFirmwareVersion(0x03, _hubVer);
     if (s != PulseExpressStatus::Ok) return s;
-    // Algorithm version is informational; ignore failure.
-    readFirmwareVersion(0x07, _algoVer);
+    // Algorithm version is informational; ignore failure. Not every 40.x build
+    // answers 0xFF/0x07 (some return 0x02, wrong byte count for the family), so
+    // track whether the read actually succeeded instead of reporting 0.0.0.
+    _algoVerValid = (readFirmwareVersion(0x07, _algoVer) == PulseExpressStatus::Ok);
+    if (!_algoVerValid) _algoVer = PulseExpressVersion{0, 0, 0};
 
     _caps = capsFor(_hubVer);
     tracef("hub %u.%u.%u algo %u.%u.%u  vec=%u sample=%u %s%s",
@@ -172,12 +192,25 @@ PulseExpressStatus PulseExpress::hardReset()
 
 PulseExpressStatus PulseExpress::enterAppMode()
 {
-    // 0x01/0x00/0x00 — switch operating mode to application.
-    PulseExpressStatus s = writeCmd(0x01, 0x00, uint8_t(0x00), kEnterAppModeDelayMs);
-    if (s != PulseExpressStatus::Ok) return s;
-
-    // 0x02/0x00 — read operating mode; expect 0x00 (application).
+    // 0x02/0x00 — read operating mode; 0x00 is application mode.
+    //
+    // After hardReset() with MFIO held high the hub boots straight into
+    // application mode, which is why UG6921's flows (Tables 5 & 6) only ever
+    // *read* the mode and never write it. Writing 0x01/0x00/0x00 restarts the
+    // hub application, and issuing the next command ~20 ms later caught the
+    // sensor stack mid-init — the AFE enable then answered 0xFF. So: read
+    // first, and only switch (with a full settling delay) if we have to.
     uint8_t mode = 0xFF;
+    PulseExpressStatus s = readBytes(0x02, 0x00, &mode, 1);
+    if (s != PulseExpressStatus::Ok) return s;
+    if (mode == 0x00) return PulseExpressStatus::Ok;
+
+    tracef("hub in mode 0x%02X, switching to application", mode);
+    s = writeCmd(0x01, 0x00, uint8_t(0x00), kEnterAppModeDelayMs);
+    if (s != PulseExpressStatus::Ok) return s;
+    delay(kModeSwitchSettleMs);
+
+    mode = 0xFF;
     s = readBytes(0x02, 0x00, &mode, 1);
     if (s != PulseExpressStatus::Ok) return s;
     if (mode != 0x00) return PulseExpressStatus::NotInAppMode;
@@ -360,7 +393,14 @@ PulseExpressStatus PulseExpress::readSamples(PulseExpressSample *out, size_t cap
     for (uint8_t i = 0; i < nn; ++i)
     {
         s = readFifoSample(buf, _caps.sampleBytes);
-        if (s != PulseExpressStatus::Ok) return s;
+        if (s != PulseExpressStatus::Ok)
+        {
+            tracef("readSamples: FIFO read failed 0x%02X after %u samples; flushing",
+                   uint8_t(s), i);
+            flushFifo();
+            if (count) *count = i;
+            return s;
+        }
         parseSample(buf, out[i]);
     }
     if (count) *count = nn;
@@ -375,26 +415,47 @@ PulseExpressStatus PulseExpress::startRaw()
 {
     if (!_began) return PulseExpressStatus::NotConfigured;
 
-    // Per UG6921 Table 6: output mode = sensor-only, then enable AFE, then
-    // enable BPT in estimation mode (the algorithm runs but does not affect
-    // PPG), then disable AGC so LED currents stay where the user puts them.
+    // UG6921 Table 6 §1.2-1.9, in the documented order: sensor-only output
+    // mode, FIFO threshold, enable AFE, enable algorithm, disable AGC (so the
+    // LED currents set below stay put), settle, then the LED currents.
+    //
+    // NOTE: the 1.0.x driver also issued "enable BPT in estimation mode"
+    // (0x52/04/02) here. In sensor-only output mode the algorithm contributes
+    // nothing — the FIFO carries raw MAX30101 counters either way — and on
+    // 40.2.2+ that command is rejected unless a calibration vector, date/time
+    // and SpO2 coefficients have already been loaded. Making it fatal meant a
+    // freshly-booted board could never stream raw PPG. It is now best-effort:
+    // we try it, trace the result and carry on.
     PulseExpressStatus s = setOutputMode(kOutputModeSensorOnly);
-    if (s != PulseExpressStatus::Ok) return s;
-    s = setFifoIntrThreshold(kFifoIntrThreshold);  if (s != PulseExpressStatus::Ok) return s;
-    s = enableAfe(true);                           if (s != PulseExpressStatus::Ok) return s;
-    s = enableBpt(0x02);                           if (s != PulseExpressStatus::Ok) return s;
-    s = enableAgc(false);                          if (s != PulseExpressStatus::Ok) return s;
+    if (s != PulseExpressStatus::Ok) { tracef("startRaw: output mode failed 0x%02X", uint8_t(s)); return s; }
+    s = setFifoIntrThreshold(kFifoIntrThreshold);
+    if (s != PulseExpressStatus::Ok) { tracef("startRaw: fifo threshold failed 0x%02X", uint8_t(s)); return s; }
+    s = enableAfe(true);
+    if (s != PulseExpressStatus::Ok) { tracef("startRaw: AFE enable failed 0x%02X", uint8_t(s)); return s; }
+
+    PulseExpressStatus bpt = enableBpt(0x02);
+    if (bpt != PulseExpressStatus::Ok)
+        tracef("startRaw: BPT estimation enable returned 0x%02X (optional in "
+               "sensor-only mode; continuing)", uint8_t(bpt));
+
+    s = enableAgc(false);
+    if (s != PulseExpressStatus::Ok) { tracef("startRaw: AGC disable failed 0x%02X", uint8_t(s)); return s; }
     delay(kRawModeSettleMs);
 
-    // LED1 (red) and LED2 (IR) currents to half-scale. Must come AFTER the
-    // algorithm enable or the values are overwritten during init. The 0x40/03
-    // family proxies to the MAX30101 over the secondary I2C bus, so it needs
-    // more headroom than the trivial-command default.
-    s = writeCmd3(0x40, 0x03, kMax30101Led1RegAddr, kMax30101LedHalfScale, 0,
-                  kLedCurrentDelayMs);
-    if (s != PulseExpressStatus::Ok) return s;
-    return writeCmd3(0x40, 0x03, kMax30101Led2RegAddr, kMax30101LedHalfScale, 0,
-                     kLedCurrentDelayMs);
+    // LED1 (red) and LED2 (IR) currents to half-scale. Must come AFTER the AFE
+    // (and algorithm, when it starts) is enabled or the values are overwritten
+    // during init. Frame is exactly 4 bytes — family, sensor index, MAX30101
+    // register address, register value (UG6921 Table 6 §1.8/1.9); a trailing
+    // pad byte makes the hub reject the command. The 0x40/03 family proxies to
+    // the MAX30101 over the secondary I2C bus, so it needs more headroom than
+    // the trivial-command default.
+    s = writeCmd(0x40, 0x03, kMax30101Led1RegAddr, kMax30101LedHalfScale,
+                 kLedCurrentDelayMs);
+    if (s != PulseExpressStatus::Ok) { tracef("startRaw: LED1 current failed 0x%02X", uint8_t(s)); return s; }
+    s = writeCmd(0x40, 0x03, kMax30101Led2RegAddr, kMax30101LedHalfScale,
+                 kLedCurrentDelayMs);
+    if (s != PulseExpressStatus::Ok) { tracef("startRaw: LED2 current failed 0x%02X", uint8_t(s)); return s; }
+    return PulseExpressStatus::Ok;
 }
 
 PulseExpressStatus PulseExpress::readRaw(PulseExpressRawSample *out, size_t cap, size_t *count, bool wantRed)
@@ -405,6 +466,9 @@ PulseExpressStatus PulseExpress::readRaw(PulseExpressRawSample *out, size_t cap,
     HubStatus st;
     PulseExpressStatus s = readHubStatus(st);
     if (s != PulseExpressStatus::Ok) return s;
+    if (st.fifoOutOverflow)
+        trace("readRaw: hub output FIFO overflowed — poll faster or drain the "
+              "whole FIFO each pass (loop until count reports 0)");
     if (!st.dataReady) return PulseExpressStatus::Ok;
 
     uint8_t nn = 0;
@@ -422,7 +486,17 @@ PulseExpressStatus PulseExpress::readRaw(PulseExpressRawSample *out, size_t cap,
     for (uint8_t i = 0; i < nn; ++i)
     {
         s = readFifoSample(buf, 12);
-        if (s != PulseExpressStatus::Ok) return s;
+        if (s != PulseExpressStatus::Ok)
+        {
+            // A FIFO that has overflowed rejects further reads until it is
+            // emptied (UG6921 Table 1). Drain it so the next call recovers,
+            // and hand back the samples we did get alongside the error.
+            tracef("readRaw: FIFO read failed 0x%02X after %u samples; flushing",
+                   uint8_t(s), i);
+            flushFifo();
+            if (count) *count = i;
+            return s;
+        }
         out[i].ir  = (uint32_t(buf[0]) << 16) | (uint32_t(buf[1]) << 8) | uint32_t(buf[2]);
         out[i].red = wantRed
                        ? ((uint32_t(buf[3]) << 16) | (uint32_t(buf[4]) << 8) | uint32_t(buf[5]))
@@ -590,8 +664,65 @@ PulseExpressStatus PulseExpress::setFifoIntrThreshold(uint8_t th)
 
 PulseExpressStatus PulseExpress::enableAfe(bool on)
 {
-    return writeCmd(0x44, 0x03, uint8_t(on ? 0x01 : 0x00),
-                    on ? kEnableAfeDelayMs : kDisableAfeDelayMs);
+    // UG6921 Table 6 §1.4 / §3.1: AA 44 03 <on>, CMD_DELAY 40 ms. Index 0x03 is
+    // the optical AFE (MAX30101/MAX30102).
+    if (!on)
+        return writeCmd(0x44, 0x03, uint8_t(0x00), kDisableAfeDelayMs);
+
+    // Enabling makes the hub configure the AFE over its secondary I2C bus. If
+    // the sensor stack is still initialising the hub answers 0xFF ("unknown
+    // error"), whose documented remedy (Table 1) is to check AFE comms and
+    // insert delay before resending. Space out a few attempts before failing.
+    PulseExpressStatus s = PulseExpressStatus::Ok;
+    for (uint8_t attempt = 0; attempt <= kAfeEnableRetries; ++attempt)
+    {
+        s = writeCmd(0x44, 0x03, uint8_t(0x01), kEnableAfeDelayMs);
+        if (s == PulseExpressStatus::Ok) return s;
+        if (attempt == kAfeEnableRetries) break;
+        tracef("AFE enable returned 0x%02X, retry %u of %u in %u ms",
+               uint8_t(s), attempt + 1, kAfeEnableRetries, kAfeEnableRetryDelayMs);
+        delay(kAfeEnableRetryDelayMs);
+    }
+
+    // Out of retries: run the diagnostic UG6921 Table 1 asks for, so the trace
+    // says whether the hub can reach the AFE at all.
+    uint8_t partId = 0;
+    PulseExpressStatus p = readAfePartId(partId);
+    if (p == PulseExpressStatus::Ok)
+        tracef("AFE PART_ID=0x%02X (expected 0x%02X) — hub<->AFE bus OK, so the "
+               "0x%02X is a sequencing/timing fault",
+               partId, kMax30101PartIdExpected, uint8_t(s));
+    else
+        tracef("AFE PART_ID read also failed (0x%02X) — hub cannot reach the "
+               "optical AFE; check the sensor's power and secondary I2C bus",
+               uint8_t(p));
+    return s;
+}
+
+PulseExpressStatus PulseExpress::readAfePartId(uint8_t &partId, uint8_t sensorIdx)
+{
+    // UG6921 Table 5 §1.13: AA 41 03 FF -> AB 00 15.
+    return readBytes(0x41, sensorIdx, kMax30101PartIdReg, &partId, 1);
+}
+
+PulseExpressStatus PulseExpress::flushFifo()
+{
+    // Read and discard until the hub reports an empty output FIFO. Bounded so a
+    // hub that keeps reporting samples can never wedge the caller's loop.
+    uint8_t scratch[16];
+    for (uint16_t guard = 0; guard < kFifoFlushMaxSamples; ++guard)
+    {
+        uint8_t nn = 0;
+        PulseExpressStatus s = readNumFifoSamples(nn);
+        if (s != PulseExpressStatus::Ok) return s;
+        if (nn == 0) return PulseExpressStatus::Ok;
+        for (uint8_t i = 0; i < nn && guard < kFifoFlushMaxSamples; ++i, ++guard)
+        {
+            s = readFifoSample(scratch, 12);
+            if (s != PulseExpressStatus::Ok) return s;
+        }
+    }
+    return PulseExpressStatus::Ok;
 }
 
 PulseExpressStatus PulseExpress::enableAgc(bool on)

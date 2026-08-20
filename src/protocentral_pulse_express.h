@@ -290,7 +290,13 @@ public:
     PulseExpressStatus begin();
 
     PulseExpressVersion version()      const { return _hubVer; }
+    /// Algorithm firmware version. Only meaningful when algoVersionValid() is
+    /// true: UG6921 documents `AA FF 03` (hub version) but not `AA FF 07`, and
+    /// some builds reject the latter with status 0x02 (wrong byte count). When
+    /// that happens this stays {0,0,0} — report it as unavailable rather than
+    /// as a real "0.0.0", which reads like a broken hub.
     PulseExpressVersion algoVersion()  const { return _algoVer; }
+    bool            algoVersionValid() const { return _algoVerValid; }
     PulseExpressCaps    caps()         const { return _caps; }
     uint8_t         mfioPin()      const { return _mfioPin; }
 
@@ -348,6 +354,25 @@ public:
 
     /// Read and decode the hub status byte (Family 0x00 / Index 0x00).
     PulseExpressStatus readStatus(HubStatus &out) { return readHubStatus(out); }
+
+    /// Sensor index of the optical AFE in the 0x40/0x41/0x44 command families.
+    static constexpr uint8_t kAfeSensorIndex = 0x03;
+
+    /// Read a sensor's PART_ID register (UG6921 Table 5 §1.13: `AA 41 03 FF`
+    /// -> 0x15 for MAX30101/MAX30102). This is the diagnostic UG6921 Table 1
+    /// prescribes when a command returns 0xFF ("Unknown error. Verify that the
+    /// communications to the AFE ... are correct by reading the PART_ID"): a
+    /// good read proves the hub can reach the AFE over its secondary I2C bus,
+    /// so a 0xFF elsewhere is a sequencing/timing problem rather than a broken
+    /// sensor. `sensorIdx` defaults to the optical AFE; pass other indices to
+    /// probe which slot (if any) a given firmware image maps the sensor to.
+    PulseExpressStatus readAfePartId(uint8_t &partId, uint8_t sensorIdx = kAfeSensorIndex);
+
+    /// Discard everything in the hub's output FIFO. An overflowed FIFO makes
+    /// subsequent 0x12/0x01 reads fail with 0xFF until it is emptied (UG6921
+    /// Table 1, NAK row: "empty the FIFO by reading all the data or reduce the
+    /// report rate"), so readRaw()/readSamples() call this to recover.
+    PulseExpressStatus flushFifo();
 
     // ---------------- Teardown ----------------------------------------------
 
@@ -407,6 +432,7 @@ private:
     uint8_t          _mfioPin;
     PulseExpressVersion  _hubVer  = {0, 0, 0};
     PulseExpressVersion  _algoVer = {0, 0, 0};
+    bool                 _algoVerValid = false;
     PulseExpressCaps     _caps;
     PulseExpressDateTime _now;
     bool             _began        = false;

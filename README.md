@@ -115,6 +115,27 @@ operation — see [`examples/11.FirmwareFlash`](examples/11.FirmwareFlash) and
 | 10 | DeviceInfoAndDiagnostics  | Firmware versions, caps, live hub status |
 | 11 | FirmwareFlash             | Factory/recovery .msbl flasher |
 
+## Hub firmware flashing (factory / recovery)
+
+Boards ship pre-flashed — you normally never need this. To recover a hub or
+change its MAX32664D firmware version, [`flash-firmware.sh`](flash-firmware.sh)
+uploads the [`11.FirmwareFlash`](examples/11.FirmwareFlash) relay sketch and then
+streams your `.msbl` to it:
+
+```bash
+./flash-firmware.sh --dry-run  extras/firmware/<image>.msbl   # parse only
+./flash-firmware.sh --esp32 --port <PORT> extras/firmware/<image>.msbl
+```
+
+**Host board:** a page write is one 8210-byte I2C transaction, so the host's Wire
+buffer must hold all of it — use an **ESP32 or RP2040**. The UNO R4 cannot flash
+(its Renesas Wire caps transactions at 255 bytes); the tool detects this and
+stops before erasing anything.
+
+The `.msbl` is Maxim/ADI IP and is not distributed with this library; supply your
+own. Full usage, the manual two-command path, and troubleshooting are in
+[`extras/flash_tool/README.md`](extras/flash_tool/README.md).
+
 ## API Reference
 
 Construct with the reset and MFIO pins (and optionally a `TwoWire` bus):
