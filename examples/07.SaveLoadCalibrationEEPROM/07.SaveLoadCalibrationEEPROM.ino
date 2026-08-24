@@ -168,14 +168,19 @@ void loop()
 {
     PulseExpressSample samples[8];
     size_t n = 0;
-    if (hub.readSamples(samples, 8, &n) != PulseExpressStatus::Ok) return;
-    for (size_t i = 0; i < n; ++i)
+    // Drain to empty; a hub FIFO left to overflow rejects every later read.
+    do
     {
-        Serial.print("sys=");   Serial.print(samples[i].systolic);
-        Serial.print(" dia=");  Serial.print(samples[i].diastolic);
-        Serial.print(" hr=");   Serial.print(samples[i].heartRate(), 1);
-        Serial.print(" spo2="); Serial.println(samples[i].spo2(), 1);
-    }
+        n = 0;
+        if (hub.readSamples(samples, 8, &n) != PulseExpressStatus::Ok) return;
+        for (size_t i = 0; i < n; ++i)
+        {
+            Serial.print("sys=");   Serial.print(samples[i].systolic);
+            Serial.print(" dia=");  Serial.print(samples[i].diastolic);
+            Serial.print(" hr=");   Serial.print(samples[i].heartRate(), 1);
+            Serial.print(" spo2="); Serial.println(samples[i].spo2(), 1);
+        }
+    } while (n == 8);
     delay(100);
 }
 

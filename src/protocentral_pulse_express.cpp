@@ -242,6 +242,7 @@ PulseExpressCaps PulseExpress::capsFor(PulseExpressVersion v) const
         c.sampleBytes      = 29;
         c.dateYYYYMMDD     = true;
         c.multiPointCalib  = true;
+        c.extendedSampleFields = true;
     }
     return c;
 }
@@ -781,10 +782,11 @@ void PulseExpress::parseSample(const uint8_t *buf, PulseExpressSample &s) const
 
     // 40.5.0+ extension fields. Zeroed when caps reports a smaller sample
     // size so user code can rely on a consistent struct layout.
-    s.ibiMs          = (_caps.sampleBytes >= 25) ? pack16BE(&buf[23]) : 0;
-    s.spo2Confidence = (_caps.sampleBytes >= 26) ? buf[25] : 0;
-    s.bptReportFlag  = (_caps.sampleBytes >= 27) ? buf[26] : 0;
-    s.spo2ReportFlag = (_caps.sampleBytes >= 28) ? buf[27] : 0;
+    const bool ext   = _caps.extendedSampleFields;
+    s.ibiMs          = ext ? pack16BE(&buf[23]) : 0;
+    s.spo2Confidence = ext ? buf[25] : 0;
+    s.bptReportFlag  = ext ? buf[26] : 0;
+    s.spo2ReportFlag = ext ? buf[27] : 0;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////

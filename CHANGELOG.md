@@ -48,7 +48,22 @@ All notable changes to the ProtoCentral Pulse Express library.
   they did retrieve, and trace a warning when the overflow flag is set. The
   example drains the FIFO to empty each pass and polls at 100 ms.
 
+### Fixed (legacy 40.2.2 firmware support)
+- **`03.HeartRateSpO2` printed a fabricated SpO2 confidence of 0 %** on the
+  23-byte legacy sample, which does not carry that field. It now prints `n/a`.
+- **`09.HeartRateVariability` silently did nothing on legacy firmware.** HRV is
+  derived from the hub's inter-beat interval, which only exists in the 29-byte
+  sample (>= 40.5.0); the sketch warned once and then collected zeros forever.
+  It now stops with an explanation and points at `03.HeartRateSpO2`.
+- Examples `01`, `03`, `05`, `06`, `07`, `09` drain the hub FIFO to empty each
+  pass instead of taking one capped read per loop. An overflowed output FIFO
+  rejects every later read until emptied, which stops streaming permanently.
+
 ### Added
+- `PulseExpressCaps::extendedSampleFields` — true when the hub reports the
+  29-byte sample carrying IBI, SpO2 confidence and the two report flags
+  (>= 40.5.0). Examples and `parseSample()` now branch on this named capability
+  rather than testing `sampleBytes` directly.
 - **`flash-firmware.sh`** — one-command hub firmware flashing: compiles and
   uploads `11.FirmwareFlash` to the Arduino host, then runs
   `extras/flash_tool/flash_msbl.py` against it. Auto-detects the board's serial

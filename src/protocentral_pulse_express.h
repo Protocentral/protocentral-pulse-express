@@ -129,6 +129,12 @@ struct PulseExpressCaps
     bool     multiPointCalib  = false; // false: 0x50/04/01+02 | true: 0x50/04/07+08
     bool     sendBpMedication = true;  // dropped in 40.2.2+
     bool     sendRestMode     = true;  // dropped in 40.2.2+
+    /// The 29-byte sample adds IBI, SpO2 confidence and the two report flags
+    /// (>=40.5.0). On the 23-byte legacy sample those PulseExpressSample fields
+    /// are always zero, so features built on them (HRV from IBI, SpO2
+    /// confidence gating) are unavailable — branch on this rather than testing
+    /// sampleBytes, and never present a zero from them as a real reading.
+    bool     extendedSampleFields = false;
 };
 
 /**

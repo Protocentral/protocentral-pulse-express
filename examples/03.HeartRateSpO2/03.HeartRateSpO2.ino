@@ -41,6 +41,8 @@ static void halt(const char *step, PulseExpressStatus s)
     }
 }
 
+static bool hasConfidence = false;
+
 void setup()
 {
     Serial.begin(57600);
@@ -59,6 +61,10 @@ void setup()
 
     // Estimation mode streams HR/SpO2 (and BP, once calibrated). We use the
     // default SpO2 coefficients here; calibrate them per AN6845 for accuracy.
+    // Cache once: the 29-byte sample (>= 40.5.0) carries an SpO2 confidence
+    // figure, the 23-byte legacy sample does not.
+    hasConfidence = hub.caps().extendedSampleFields;
+
     s = hub.startEstimation();
     if (s != PulseExpressStatus::Ok) halt("startEstimation", s);
 
@@ -68,17 +74,28 @@ void setup()
 
 void loop()
 {
+    // Drain to empty: readSamples() returns at most `cap` per call, and a hub
+    // FIFO left to overflow rejects every later read until it is emptied.
     PulseExpressSample samples[8];
     size_t n = 0;
-    if (hub.readSamples(samples, 8, &n) != PulseExpressStatus::Ok) return;
-
-    for (size_t i = 0; i < n; ++i)
+    do
     {
-        const PulseExpressSample &s = samples[i];
-        Serial.print("HR: ");    Serial.print(s.heartRate(), 1); Serial.print(" bpm");
-        Serial.print("  SpO2: "); Serial.print(s.spo2(), 1);      Serial.print(" %");
-        Serial.print("  conf: "); Serial.print(s.spo2Confidence); Serial.print(" %");
-        Serial.print("  status: "); Serial.println(uint8_t(s.bpStatus));
-    }
+        n = 0;
+        if (hub.readSamples(samples, 8, &n) != PulseExpressStatus::Ok) return;
+
+        for (size_t i = 0; i < n; ++i)
+        {
+            const PulseExpressSample &s = samples[i];
+            Serial.print("HR: ");     Serial.print(s.heartRate(), 1); Serial.print(" bpm");
+            Serial.print("  SpO2: "); Serial.print(s.spo2(), 1);      Serial.print(" %");
+            // SpO2 confidence only exists in the 29-byte sample (>= 40.5.0);
+            // on legacy firmware the field is always zero, so say so rather
+            // than printing a fake "0 %".
+            Serial.print("  conf: ");
+            if (hasConfidence) { Serial.print(s.spo2Confidence); Serial.print(" %"); }
+            else               { Serial.print("n/a"); }
+            Serial.print("  status: "); Serial.println(uint8_t(s.bpStatus));
+        }
+    } while (n == 8);
     delay(100);
 }

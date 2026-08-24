@@ -76,8 +76,24 @@ void setup()
     PulseExpressStatus s = hub.begin();
     if (s != PulseExpressStatus::Ok) halt("hub.begin()", s);
 
-    if (hub.caps().sampleBytes < 25)
-        Serial.println("NOTE: this firmware does not report IBI (needs >= 40.5.0).");
+    // HRV here is derived entirely from the hub's inter-beat interval, which
+    // only exists in the 29-byte sample (>= 40.5.0). On the 23-byte legacy
+    // sample ibiMs is always zero, so this sketch would silently collect
+    // nothing forever. Stop with an explanation instead.
+    if (!hub.caps().extendedSampleFields)
+    {
+        while (true)
+        {
+            Serial.print("Hub firmware ");
+            Serial.print(hub.version().major); Serial.print('.');
+            Serial.print(hub.version().minor); Serial.print('.');
+            Serial.println(hub.version().patch);
+            Serial.println("does not report inter-beat intervals (needs >= 40.5.0),");
+            Serial.println("so HRV cannot be computed. Use 03.HeartRateSpO2 for");
+            Serial.println("heart rate on this firmware.");
+            delay(5000);
+        }
+    }
 
     s = hub.startEstimation();
     if (s != PulseExpressStatus::Ok) halt("startEstimation", s);
@@ -88,24 +104,29 @@ void setup()
 
 void loop()
 {
+    // Drain to empty; a hub FIFO left to overflow rejects every later read.
     PulseExpressSample samples[8];
     size_t n = 0;
-    if (hub.readSamples(samples, 8, &n) != PulseExpressStatus::Ok) return;
-
-    for (size_t i = 0; i < n; ++i)
+    do
     {
-        uint16_t ibi = samples[i].ibiMs;
-        // Accept only fresh, plausible intervals (250..2000 ms ~ 30..240 bpm).
-        if (ibi >= 250 && ibi <= 2000 && ibi != lastIbi)
+        n = 0;
+        if (hub.readSamples(samples, 8, &n) != PulseExpressStatus::Ok) return;
+
+        for (size_t i = 0; i < n; ++i)
         {
-            lastIbi = ibi;
-            ibis[count++] = ibi;
-            if (count >= WINDOW)
+            uint16_t ibi = samples[i].ibiMs;
+            // Accept only fresh, plausible intervals (250..2000 ms ~ 30..240 bpm).
+            if (ibi >= 250 && ibi <= 2000 && ibi != lastIbi)
             {
-                computeHrv();
-                count = 0;
+                lastIbi = ibi;
+                ibis[count++] = ibi;
+                if (count >= WINDOW)
+                {
+                    computeHrv();
+                    count = 0;
+                }
             }
         }
-    }
+    } while (n == 8);
     delay(50);
 }

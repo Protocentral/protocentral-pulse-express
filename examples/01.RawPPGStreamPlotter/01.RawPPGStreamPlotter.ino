@@ -60,14 +60,16 @@ void setup()
 
 void loop()
 {
+    // readRaw() returns at most SAMPLE_CAP samples per call, so keep calling it
+    // until a pass comes back short. If the host drains slower than the hub
+    // fills, the hub's output FIFO overflows and then rejects every FIFO read
+    // until it is emptied — streaming would stop for good.
     PulseExpressRawSample buf[SAMPLE_CAP];
     size_t n = 0;
-    PulseExpressStatus s = hub.readRaw(buf, SAMPLE_CAP, &n, /*wantRed=*/false);
-    if (s != PulseExpressStatus::Ok) return;
-
-    for (size_t i = 0; i < n; ++i)
+    do
     {
-        Serial.println(buf[i].ir);
-        delay(3);
-    }
+        n = 0;
+        if (hub.readRaw(buf, SAMPLE_CAP, &n, /*wantRed=*/false) != PulseExpressStatus::Ok) return;
+        for (size_t i = 0; i < n; ++i) Serial.println(buf[i].ir);
+    } while (n == SAMPLE_CAP);
 }
