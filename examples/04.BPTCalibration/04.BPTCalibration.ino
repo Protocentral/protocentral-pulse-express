@@ -26,6 +26,23 @@
 #include <Wire.h>
 #include "protocentral_pulse_express.h"
 
+// The BPT calibration vector is up to 824 bytes, which does not fit alongside
+// the Serial buffers and locals in 2 KB of SRAM. Build a stub on those parts
+// rather than failing with "data section exceeds available space".
+#if defined(__AVR__) && (RAMEND < 0x1000)
+
+void setup()
+{
+    Serial.begin(57600);
+    while (!Serial && millis() < 3000) {}
+    Serial.println(F("04.BPTCalibration needs more RAM than this board has:"));
+    Serial.println(F("the BPT calibration vector alone is up to 824 bytes."));
+    Serial.println(F("Use a Mega, UNO R4, ESP32, RP2040, STM32 or similar."));
+}
+void loop() {}
+
+#else
+
 #define RESET_PIN  4
 #define MFIO_PIN   2
 
@@ -44,7 +61,7 @@ static void halt(const char *step, PulseExpressStatus s)
 {
     while (true)
     {
-        Serial.print(step); Serial.print(" failed: 0x");
+        Serial.print(step); Serial.print(F(" failed: 0x"));
         Serial.println(uint8_t(s), HEX);
         delay(5000);
     }
@@ -69,7 +86,7 @@ static PulseExpressStatus startCalibration()
 
 static void dumpHex(const uint8_t *buf, size_t len)
 {
-    Serial.println("---- BEGIN CALIBRATION VECTOR ----");
+    Serial.println(F("---- BEGIN CALIBRATION VECTOR ----"));
     for (size_t i = 0; i < len; ++i)
     {
         if (buf[i] < 0x10) Serial.print('0');
@@ -78,7 +95,7 @@ static void dumpHex(const uint8_t *buf, size_t len)
         else                    Serial.print(' ');
     }
     Serial.println();
-    Serial.println("---- END CALIBRATION VECTOR ----");
+    Serial.println(F("---- END CALIBRATION VECTOR ----"));
 }
 
 void setup()
@@ -90,20 +107,20 @@ void setup()
     PulseExpressStatus s = hub.begin();
     if (s != PulseExpressStatus::Ok) halt("hub.begin()", s);
     if (!hub.firmwareSupported())
-        Serial.println("WARNING: firmware outside validated 40.x line.");
+        Serial.println(F("WARNING: firmware outside validated 40.x line."));
 
     s = startCalibration();
     if (s != PulseExpressStatus::Ok) halt("startCalibration", s);
 
-    Serial.println("Place your finger on the sensor — hold still until 100%.");
+    Serial.println(F("Place your finger on the sensor — hold still until 100%."));
     PulseExpressSample sample;
     unsigned long startMs = millis();
     while (true)
     {
         if (hub.readSample(sample) == PulseExpressStatus::Ok)
         {
-            Serial.print("progress: "); Serial.print(sample.progress);
-            Serial.print("%  status: "); Serial.println(uint8_t(sample.bpStatus));
+            Serial.print(F("progress: ")); Serial.print(sample.progress);
+            Serial.print(F("%  status: ")); Serial.println(uint8_t(sample.bpStatus));
             if (sample.bpStatus == PulseExpressBpStatus::Success && sample.progress >= 100)
                 break;
         }
@@ -115,15 +132,17 @@ void setup()
     s = hub.readCalibrationVector(calibVector, sizeof(calibVector), &len);
     if (s != PulseExpressStatus::Ok) halt("readCalibrationVector", s);
 
-    Serial.print("Calibration complete. Vector length: ");
+    Serial.print(F("Calibration complete. Vector length: "));
     Serial.println(len);
     dumpHex(calibVector, len);
 
     hub.stop();
-    Serial.println("Done. Save the vector above for use with example 05.");
+    Serial.println(F("Done. Save the vector above for use with example 05."));
 }
 
 void loop()
 {
     delay(1000);
 }
+
+#endif  // RAM guard

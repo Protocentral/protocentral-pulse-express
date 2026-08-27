@@ -36,6 +36,23 @@
 #include <Wire.h>
 #include "protocentral_pulse_express.h"
 
+// The BPT calibration vector is up to 824 bytes, which does not fit alongside
+// the Serial buffers and locals in 2 KB of SRAM. Build a stub on those parts
+// rather than failing with "data section exceeds available space".
+#if defined(__AVR__) && (RAMEND < 0x1000)
+
+void setup()
+{
+    Serial.begin(57600);
+    while (!Serial && millis() < 3000) {}
+    Serial.println(F("06.BPTCalibrateAndEstimate needs more RAM than this board has:"));
+    Serial.println(F("the BPT calibration vector alone is up to 824 bytes."));
+    Serial.println(F("Use a Mega, UNO R4, ESP32, RP2040, STM32 or similar."));
+}
+void loop() {}
+
+#else
+
 #define RESET_PIN  4
 #define MFIO_PIN   2
 
@@ -63,7 +80,7 @@ static void haltWithError(const char *step, PulseExpressStatus s)
     while (true)
     {
         Serial.print(step);
-        Serial.print(" failed: 0x");
+        Serial.print(F(" failed: 0x"));
         Serial.println(uint8_t(s), HEX);
         delay(5000);
     }
@@ -93,7 +110,7 @@ static PulseExpressStatus runCalibration()
     }
     if (s != PulseExpressStatus::Ok) return s;
 
-    Serial.println("Place your finger on the sensor — hold still until 100%.");
+    Serial.println(F("Place your finger on the sensor — hold still until 100%."));
 
     PulseExpressSample sample;
     unsigned long startMs = millis();
@@ -102,9 +119,9 @@ static PulseExpressStatus runCalibration()
         PulseExpressStatus r = hub.readSample(sample);
         if (r == PulseExpressStatus::Ok)
         {
-            Serial.print("progress: ");
+            Serial.print(F("progress: "));
             Serial.print(sample.progress);
-            Serial.print("%  status: ");
+            Serial.print(F("%  status: "));
             Serial.println(uint8_t(sample.bpStatus));
 
             if (sample.bpStatus == PulseExpressBpStatus::Success && sample.progress >= 100) break;
@@ -130,21 +147,21 @@ void setup()
     PulseExpressStatus s = hub.begin();
     if (s != PulseExpressStatus::Ok) haltWithError("hub.begin()", s);
 
-    Serial.print("Hub firmware ");
+    Serial.print(F("Hub firmware "));
     Serial.print(hub.version().major); Serial.print('.');
     Serial.print(hub.version().minor); Serial.print('.');
     Serial.println(hub.version().patch);
-    Serial.print("Calibration vector size: ");
+    Serial.print(F("Calibration vector size: "));
     Serial.println(hub.caps().calibVectorBytes);
 
     s = runCalibration();
     if (s != PulseExpressStatus::Ok) haltWithError("calibration", s);
-    Serial.println("Calibration complete; reading vector.");
+    Serial.println(F("Calibration complete; reading vector."));
 
     size_t calibLen = 0;
     s = hub.readCalibrationVector(calibVector, sizeof(calibVector), &calibLen);
     if (s != PulseExpressStatus::Ok) haltWithError("readCalibrationVector", s);
-    Serial.print("Stored "); Serial.print(calibLen); Serial.println(" calibration bytes.");
+    Serial.print(F("Stored ")); Serial.print(calibLen); Serial.println(F(" calibration bytes."));
 
     s = hub.stop();  // tear down calibration mode before re-enabling for estimation
     if (s != PulseExpressStatus::Ok) haltWithError("hub.stop()", s);
@@ -162,7 +179,7 @@ void setup()
     s = hub.startEstimation(coeffs);
     if (s != PulseExpressStatus::Ok) haltWithError("startEstimation", s);
 
-    Serial.println("Estimation running.");
+    Serial.println(F("Estimation running."));
     delay(1000);
 }
 
@@ -179,13 +196,15 @@ void loop()
 
         for (size_t i = 0; i < n; ++i)
         {
-            Serial.print("sys=");   Serial.print(samples[i].systolic);
-            Serial.print(" dia=");  Serial.print(samples[i].diastolic);
-            Serial.print(" hr=");   Serial.print(samples[i].heartRate(), 1);
-            Serial.print(" spo2="); Serial.print(samples[i].spo2(), 1);
-            Serial.print(" status=");
+            Serial.print(F("sys="));   Serial.print(samples[i].systolic);
+            Serial.print(F(" dia="));  Serial.print(samples[i].diastolic);
+            Serial.print(F(" hr="));   Serial.print(samples[i].heartRate(), 1);
+            Serial.print(F(" spo2=")); Serial.print(samples[i].spo2(), 1);
+            Serial.print(F(" status="));
             Serial.println(uint8_t(samples[i].bpStatus));
         }
     } while (n == 8);
     delay(100);
 }
+
+#endif  // RAM guard

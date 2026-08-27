@@ -17,6 +17,23 @@
 #include <Wire.h>
 #include "protocentral_pulse_express.h"
 
+// The BPT calibration vector is up to 824 bytes, which does not fit alongside
+// the Serial buffers and locals in 2 KB of SRAM. Build a stub on those parts
+// rather than failing with "data section exceeds available space".
+#if defined(__AVR__) && (RAMEND < 0x1000)
+
+void setup()
+{
+    Serial.begin(57600);
+    while (!Serial && millis() < 3000) {}
+    Serial.println(F("08.MultiSubjectCalibration needs more RAM than this board has:"));
+    Serial.println(F("the BPT calibration vector alone is up to 824 bytes."));
+    Serial.println(F("Use a Mega, UNO R4, ESP32, RP2040, STM32 or similar."));
+}
+void loop() {}
+
+#else
+
 #define RESET_PIN  4
 #define MFIO_PIN   2
 #define NUM_SUBJECTS 2          // up to 5 (calIndex 0..4)
@@ -33,15 +50,15 @@ static void halt(const char *msg, PulseExpressStatus s)
 {
     while (true)
     {
-        Serial.print(msg); Serial.print(" (0x"); Serial.print(uint8_t(s), HEX);
+        Serial.print(msg); Serial.print(F(" (0x")); Serial.print(uint8_t(s), HEX);
         Serial.println(')'); delay(5000);
     }
 }
 
 static void waitForKey(uint8_t subject)
 {
-    Serial.print("Subject "); Serial.print(subject);
-    Serial.println(": place finger on sensor, then send any character to start.");
+    Serial.print(F("Subject ")); Serial.print(subject);
+    Serial.println(F(": place finger on sensor, then send any character to start."));
     while (Serial.available()) Serial.read();
     while (!Serial.available()) delay(20);
     while (Serial.available()) Serial.read();
@@ -63,7 +80,7 @@ static PulseExpressStatus calibrateSubject(uint8_t calIndex, size_t &lenOut)
     {
         if (hub.readSample(sample) == PulseExpressStatus::Ok)
         {
-            Serial.print("  progress: "); Serial.print(sample.progress); Serial.println('%');
+            Serial.print(F("  progress: ")); Serial.print(sample.progress); Serial.println('%');
             if (sample.bpStatus == PulseExpressBpStatus::Success && sample.progress >= 100) break;
         }
         if (millis() - startMs > 120000UL) return PulseExpressStatus::Timeout;
@@ -86,8 +103,8 @@ void setup()
 
     if (!hub.caps().multiPointCalib)
     {
-        Serial.println("This hub firmware does not support multi-point calibration.");
-        Serial.println("Multi-subject calibration requires firmware >= 40.5.0.");
+        Serial.println(F("This hub firmware does not support multi-point calibration."));
+        Serial.println(F("Multi-subject calibration requires firmware >= 40.5.0."));
         halt("unsupported firmware", PulseExpressStatus::UnsupportedFirmware);
     }
 
@@ -97,15 +114,17 @@ void setup()
         size_t len = 0;
         s = calibrateSubject(i, len);
         if (s != PulseExpressStatus::Ok) halt("calibrateSubject", s);
-        Serial.print("Subject "); Serial.print(i);
-        Serial.print(" calibrated. Vector length: "); Serial.println(len);
-        Serial.println("  (persist calibVector[] now — see example 07)");
+        Serial.print(F("Subject ")); Serial.print(i);
+        Serial.print(F(" calibrated. Vector length: ")); Serial.println(len);
+        Serial.println(F("  (persist calibVector[] now — see example 07)"));
     }
 
-    Serial.println("All subjects calibrated.");
+    Serial.println(F("All subjects calibrated."));
 }
 
 void loop()
 {
     delay(1000);
 }
+
+#endif  // RAM guard

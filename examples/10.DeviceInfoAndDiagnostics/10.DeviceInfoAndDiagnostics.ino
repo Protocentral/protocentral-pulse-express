@@ -41,13 +41,13 @@ void setup()
     PulseExpressStatus s = hub.begin();
     if (s != PulseExpressStatus::Ok)
     {
-        while (true) { Serial.print("hub.begin() failed: 0x");
+        while (true) { Serial.print(F("hub.begin() failed: 0x"));
                        Serial.println(uint8_t(s), HEX); delay(5000); }
     }
 
-    Serial.println("=== ProtoCentral Pulse Express — device info ===");
+    Serial.println(F("=== ProtoCentral Pulse Express — device info ==="));
     printVersion("Hub firmware:       ", hub.version());
-    Serial.print("Algorithm firmware: ");
+    Serial.print(F("Algorithm firmware: "));
     if (hub.algoVersionValid())
     {
         PulseExpressVersion a = hub.algoVersion();
@@ -58,40 +58,47 @@ void setup()
     else
     {
         // Not every 40.x build answers 0xFF/0x07 — this is normal, not a fault.
-        Serial.println("unavailable (hub did not answer 0xFF/0x07)");
+        Serial.println(F("unavailable (hub did not answer 0xFF/0x07)"));
     }
-    Serial.print("Firmware supported: "); Serial.println(hub.firmwareSupported() ? "yes" : "no (legacy defaults)");
-    Serial.print("MFIO pin:           "); Serial.println(hub.mfioPin());
+    Serial.print(F("Firmware supported: "));
+    if (hub.firmwareSupported()) Serial.println(F("yes"));
+    else                         Serial.println(F("no (legacy defaults)"));
+    Serial.print(F("MFIO pin:           ")); Serial.println(hub.mfioPin());
 
     PulseExpressCaps c = hub.caps();
-    Serial.println("--- derived capabilities ---");
-    Serial.print("Calib vector bytes: "); Serial.println(c.calibVectorBytes);
-    Serial.print("Sample bytes:       "); Serial.println(c.sampleBytes);
-    Serial.print("Date format:        "); Serial.println(c.dateYYYYMMDD ? "YYYYMMDD" : "YYMMDD");
-    Serial.print("Multi-point calib:  "); Serial.println(c.multiPointCalib ? "yes (40.5.0+)" : "no (legacy)");
-    Serial.println("=================================================");
+    Serial.println(F("--- derived capabilities ---"));
+    Serial.print(F("Calib vector bytes: ")); Serial.println(c.calibVectorBytes);
+    Serial.print(F("Sample bytes:       ")); Serial.println(c.sampleBytes);
+    Serial.print(F("Date format:        "));
+    if (c.dateYYYYMMDD) Serial.println(F("YYYYMMDD"));
+    else                Serial.println(F("YYMMDD"));
+    Serial.print(F("Multi-point calib:  "));
+    if (c.multiPointCalib) Serial.println(F("yes (40.5.0+)"));
+    else                   Serial.println(F("no (legacy)"));
+    Serial.println(F("================================================="));
 
     // UG6921 Table 1 prescribes this whenever a command returns 0xFF: read the
     // optical AFE's PART_ID (0x15 for MAX30101/MAX30102) to prove the hub can
     // reach the sensor over its secondary I2C bus.
     uint8_t partId = 0;
     PulseExpressStatus p = hub.readAfePartId(partId);
-    Serial.print("AFE PART_ID:        ");
+    Serial.print(F("AFE PART_ID:        "));
     if (p == PulseExpressStatus::Ok)
     {
-        Serial.print("0x"); Serial.print(partId, HEX);
-        Serial.println(partId == 0x15 ? " (MAX30101/2 OK)" : " (unexpected!)");
+        Serial.print(F("0x")); Serial.print(partId, HEX);
+        if (partId == 0x15) Serial.println(F(" (MAX30101/2 OK)"));
+        else                Serial.println(F(" (unexpected!)"));
     }
     else
     {
-        Serial.print("read failed 0x"); Serial.println(uint8_t(p), HEX);
+        Serial.print(F("read failed 0x")); Serial.println(uint8_t(p), HEX);
 
         // The hub could not reach the AFE at the documented sensor index.
         // Sweep the other indices: if the part answers somewhere else, this
         // firmware image maps it differently and the fix is a driver change.
         // If nothing answers anywhere, the hub cannot see the sensor at all —
         // reflash the hub or suspect the board.
-        Serial.println("Scanning sensor indices for a responding AFE...");
+        Serial.println(F("Scanning sensor indices for a responding AFE..."));
         bool found = false;
         for (uint8_t idx = 0; idx <= 0x07; ++idx)
         {
@@ -99,26 +106,26 @@ void setup()
             if (hub.readAfePartId(id, idx) == PulseExpressStatus::Ok)
             {
                 found = true;
-                Serial.print("  index 0x"); Serial.print(idx, HEX);
-                Serial.print(" answered PART_ID 0x"); Serial.println(id, HEX);
+                Serial.print(F("  index 0x")); Serial.print(idx, HEX);
+                Serial.print(F(" answered PART_ID 0x")); Serial.println(id, HEX);
             }
         }
         if (!found)
-            Serial.println("  no sensor index responded — hub cannot see the AFE.");
+            Serial.println(F("  no sensor index responded — hub cannot see the AFE."));
     }
-    Serial.println("=================================================");
+    Serial.println(F("================================================="));
 
     s = hub.startRaw();
     if (s != PulseExpressStatus::Ok)
     {
-        Serial.print("startRaw() failed: 0x");
+        Serial.print(F("startRaw() failed: 0x"));
         Serial.print(uint8_t(s), HEX);
-        Serial.println(" — status polling may stay idle. See the trace above "
-                       "for the command that failed.");
+        Serial.println(F(" — status polling may stay idle. See the trace above "
+                         "for the command that failed."));
     }
     else
     {
-        Serial.println("Raw acquisition started.");
+        Serial.println(F("Raw acquisition started."));
     }
     delay(500);
 }
@@ -128,11 +135,11 @@ void loop()
     PulseExpress::HubStatus st;
     if (hub.readStatus(st) == PulseExpressStatus::Ok)
     {
-        Serial.print("dataReady=");      Serial.print(st.dataReady);
-        Serial.print(" fifoOutOvr=");    Serial.print(st.fifoOutOverflow);
-        Serial.print(" fifoInOvr=");     Serial.print(st.fifoInOverflow);
-        Serial.print(" sensorCommErr="); Serial.print(st.sensorCommError);
-        Serial.print(" busy=");          Serial.print(st.deviceBusy);
+        Serial.print(F("dataReady="));      Serial.print(st.dataReady);
+        Serial.print(F(" fifoOutOvr="));    Serial.print(st.fifoOutOverflow);
+        Serial.print(F(" fifoInOvr="));     Serial.print(st.fifoInOverflow);
+        Serial.print(F(" sensorCommErr=")); Serial.print(st.sensorCommError);
+        Serial.print(F(" busy="));          Serial.print(st.deviceBusy);
     }
 
     // Drain the FIFO *completely* each pass. readRaw() returns at most `cap`
@@ -151,9 +158,9 @@ void loop()
         total += n;
     } while (n == 16);
 
-    Serial.print(" samples=");            Serial.print(total);
-    if (total > 0) { Serial.print(" ir="); Serial.print(firstIr);
-                     Serial.print(" red="); Serial.print(firstRed); }
+    Serial.print(F(" samples="));            Serial.print(total);
+    if (total > 0) { Serial.print(F(" ir=")); Serial.print(firstIr);
+                     Serial.print(F(" red=")); Serial.print(firstRed); }
     Serial.println();
 
     delay(100);

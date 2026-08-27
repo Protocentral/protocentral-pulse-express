@@ -23,9 +23,15 @@
 // lack it). Guard on architecture so the full CI board matrix still compiles;
 // unsupported boards build a tiny stub instead. A plain #include (not
 // __has_include) is required so arduino-cli adds the EEPROM library path.
-#if defined(__AVR__) || defined(ARDUINO_ARCH_MEGAAVR) || defined(ARDUINO_ARCH_RENESAS) || \
-    defined(ESP32) || defined(ESP8266) || defined(ARDUINO_ARCH_RP2040) || \
-    defined(ARDUINO_ARCH_STM32) || defined(ARDUINO_ARCH_APOLLO3)
+// NOTE: the Nano RP2040 Connect defines ARDUINO_ARCH_RP2040 *and*
+// ARDUINO_ARCH_MBED, but the Arduino mbed core ships no EEPROM library — only
+// the earlephilhower rp2040 core does. Exclude mbed explicitly or this guard
+// lets that board through and the build dies on a missing EEPROM.h.
+#if (defined(__AVR__) || defined(ARDUINO_ARCH_MEGAAVR) || defined(ARDUINO_ARCH_RENESAS) || \
+     defined(ESP32) || defined(ESP8266) || defined(ARDUINO_ARCH_RP2040) || \
+     defined(ARDUINO_ARCH_STM32) || defined(ARDUINO_ARCH_APOLLO3)) && \
+    !defined(ARDUINO_ARCH_MBED) && \
+    !(defined(__AVR__) && (RAMEND < 0x1000))
 
 #include <EEPROM.h>
 
@@ -49,7 +55,7 @@ static void halt(const char *msg, PulseExpressStatus s)
 {
     while (true)
     {
-        Serial.print(msg); Serial.print(" (0x"); Serial.print(uint8_t(s), HEX);
+        Serial.print(msg); Serial.print(F(" (0x")); Serial.print(uint8_t(s), HEX);
         Serial.println(')'); delay(5000);
     }
 }
@@ -107,14 +113,14 @@ static PulseExpressStatus calibrate(size_t &lenOut)
     }
     if (s != PulseExpressStatus::Ok) return s;
 
-    Serial.println("Calibrating — finger on sensor, hold still until 100%.");
+    Serial.println(F("Calibrating — finger on sensor, hold still until 100%."));
     PulseExpressSample sample;
     unsigned long startMs = millis();
     while (true)
     {
         if (hub.readSample(sample) == PulseExpressStatus::Ok)
         {
-            Serial.print("progress: "); Serial.print(sample.progress); Serial.println('%');
+            Serial.print(F("progress: ")); Serial.print(sample.progress); Serial.println('%');
             if (sample.bpStatus == PulseExpressBpStatus::Success && sample.progress >= 100) break;
         }
         if (millis() - startMs > 120000UL) return PulseExpressStatus::Timeout;
@@ -132,23 +138,23 @@ void setup()
     PulseExpressStatus s = hub.begin();
     if (s != PulseExpressStatus::Ok) halt("hub.begin()", s);
     if (!hub.firmwareSupported())
-        Serial.println("WARNING: firmware outside validated 40.x line.");
+        Serial.println(F("WARNING: firmware outside validated 40.x line."));
 
     const size_t vecLen = hub.caps().calibVectorBytes;
     eeBegin(sizeof(EeHeader) + vecLen);
 
     if (loadFromEeprom(vecLen))
     {
-        Serial.println("Loaded calibration vector from EEPROM.");
+        Serial.println(F("Loaded calibration vector from EEPROM."));
     }
     else
     {
-        Serial.println("No stored vector — running calibration once.");
+        Serial.println(F("No stored vector — running calibration once."));
         size_t len = 0;
         s = calibrate(len);
         if (s != PulseExpressStatus::Ok) halt("calibration", s);
         saveToEeprom(len);
-        Serial.println("Calibration saved to EEPROM.");
+        Serial.println(F("Calibration saved to EEPROM."));
         hub.stop();
     }
 
@@ -160,7 +166,7 @@ void setup()
 
     s = hub.startEstimation();
     if (s != PulseExpressStatus::Ok) halt("startEstimation", s);
-    Serial.println("Estimation running.");
+    Serial.println(F("Estimation running."));
     delay(1000);
 }
 
@@ -175,10 +181,10 @@ void loop()
         if (hub.readSamples(samples, 8, &n) != PulseExpressStatus::Ok) return;
         for (size_t i = 0; i < n; ++i)
         {
-            Serial.print("sys=");   Serial.print(samples[i].systolic);
-            Serial.print(" dia=");  Serial.print(samples[i].diastolic);
-            Serial.print(" hr=");   Serial.print(samples[i].heartRate(), 1);
-            Serial.print(" spo2="); Serial.println(samples[i].spo2(), 1);
+            Serial.print(F("sys="));   Serial.print(samples[i].systolic);
+            Serial.print(F(" dia="));  Serial.print(samples[i].diastolic);
+            Serial.print(F(" hr="));   Serial.print(samples[i].heartRate(), 1);
+            Serial.print(F(" spo2=")); Serial.println(samples[i].spo2(), 1);
         }
     } while (n == 8);
     delay(100);
@@ -190,8 +196,9 @@ void setup()
 {
     Serial.begin(57600);
     while (!Serial && millis() < 3000) {}
-    Serial.println("EEPROM not available on this board — see example 05 to load");
-    Serial.println("a calibration vector from a code array instead.");
+    Serial.println(F("This board has no EEPROM library, or too little RAM for the"));
+    Serial.println(F("824-byte calibration vector. See example 05 to load a vector"));
+    Serial.println(F("from a code array instead."));
 }
 void loop() {}
 

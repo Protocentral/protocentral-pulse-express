@@ -2,6 +2,22 @@
 
 All notable changes to the ProtoCentral Pulse Express library.
 
+## [Unreleased]
+
+### Fixed
+- **CI `Compile Examples` was failing on five boards.** Both causes were real
+  portability bugs in the examples, not CI configuration:
+  - `07.SaveLoadCalibrationEEPROM` failed on `arduino:mbed_nano:nanorp2040connect`
+    with `EEPROM.h: No such file or directory`. The Nano RP2040 Connect defines
+    `ARDUINO_ARCH_RP2040` *and* `ARDUINO_ARCH_MBED`, but only the earlephilhower
+    rp2040 core ships an EEPROM library; the architecture guard now excludes mbed.
+  - `04`, `06`, `07`, `08` and `10` overflowed SRAM on 2 KB AVRs (up to 124 %).
+    String literals now live in flash via `F()`, which was enough for `10`
+    (124 % -> 84 %). The four calibration examples need the up-to-824-byte
+    calibration vector and genuinely cannot fit, so they build an informative
+    stub on AVRs with under 4 KB of SRAM — the pattern `11.FirmwareFlash`
+    already used. Mega and every non-AVR target still build the full sketch.
+
 ## [2.2.0] - 2026-08-27
 
 ### Fixed
