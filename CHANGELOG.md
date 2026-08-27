@@ -2,7 +2,7 @@
 
 All notable changes to the ProtoCentral Pulse Express library.
 
-## [Unreleased]
+## [2.2.0] - 2026-08-27
 
 ### Fixed
 - **`startRaw()` failed on 40.2.2 hubs, leaving the hub idle** (`dataReady` never

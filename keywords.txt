@@ -18,6 +18,7 @@ PulseExpressBpStatus	KEYWORD1
 PulseExpressSample	KEYWORD1
 PulseExpressRawSample	KEYWORD1
 PulseExpressBootloader	KEYWORD1
+ChunkMode	KEYWORD1
 HubStatus	KEYWORD1
 
 # Deprecated 2.0.x aliases (still valid via max32664.h)
@@ -37,6 +38,7 @@ algoVersion	KEYWORD2
 caps	KEYWORD2
 mfioPin	KEYWORD2
 firmwareSupported	KEYWORD2
+algoVersionValid	KEYWORD2
 
 # Calibration
 startCalibration	KEYWORD2
@@ -54,6 +56,8 @@ readRaw	KEYWORD2
 
 # Diagnostics / teardown
 readStatus	KEYWORD2
+readAfePartId	KEYWORD2
+flushFifo	KEYWORD2
 stop	KEYWORD2
 
 # Sample helpers
@@ -71,6 +75,11 @@ setInitVector	KEYWORD2
 setAuth	KEYWORD2
 eraseApplication	KEYWORD2
 writePage	KEYWORD2
+configureForPageSize	KEYWORD2
+maxTransactionBytes	KEYWORD2
+setChunkMode	KEYWORD2
+chunkMode	KEYWORD2
+lastError	KEYWORD2
 exitToApplication	KEYWORD2
 
 #######################################
@@ -87,4 +96,6 @@ MSBL_OFFSET_NUM_PAGES	LITERAL1
 MSBL_OFFSET_INIT_VECTOR	LITERAL1
 MSBL_OFFSET_AUTH	LITERAL1
 MSBL_OFFSET_PAGE_DATA	LITERAL1
+MSBL_OFFSET_PAGE_SIZE	LITERAL1
+MSBL_PAGE_CRC_BYTES	LITERAL1
 MSBL_PAGE_PAYLOAD_BYTES	LITERAL1
