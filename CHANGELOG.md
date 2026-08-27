@@ -2,7 +2,7 @@
 
 All notable changes to the ProtoCentral Pulse Express library.
 
-## [Unreleased]
+## [2.2.0] - 2026-08-27
 
 ### Fixed
 - **CI `Compile Examples` was failing on five boards.** Both causes were real
@@ -17,10 +17,6 @@ All notable changes to the ProtoCentral Pulse Express library.
     calibration vector and genuinely cannot fit, so they build an informative
     stub on AVRs with under 4 KB of SRAM — the pattern `11.FirmwareFlash`
     already used. Mega and every non-AVR target still build the full sketch.
-
-## [2.2.0] - 2026-08-27
-
-### Fixed
 - **`startRaw()` failed on 40.2.2 hubs, leaving the hub idle** (`dataReady` never
   asserting). Two causes:
   - The MAX30101 LED-current writes sent a 5-byte frame
